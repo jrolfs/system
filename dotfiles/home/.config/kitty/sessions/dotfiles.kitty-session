@@ -3,6 +3,13 @@
 # Pre-start gpg-agent so parallel shells don't race to start it, then load other sessions
 launch /run/current-system/sw/bin/zsh --login -c "gpgconf --launch gpg-agent 2>/dev/null; sleep 1 && kitty @ action goto_session $HOME/.config/kitty/sessions/work.kitty-session && kitty @ action goto_session $HOME/.config/kitty/sessions/personal.kitty-session && kitty @ action goto_session $HOME/.config/kitty/sessions/dotfiles.kitty-session && kitty @ close-window --self"
 
+# The worktree_role variables name the three panes for worktree/switch.py, the
+# worktrunk post-switch hook that moves a tab from one worktree to another.
+# Only `editor` and `shell` are acted on. The agent pane is tagged so that it
+# reads as deliberately left alone rather than overlooked: a Claude session
+# spans worktrees through its background tasks, so following the switch would
+# cut it off from work it is still doing.
+
 # System
 #
 # One tab where there used to be two: the `dot` and `macos` castles are the same
@@ -15,9 +22,9 @@ layout splits
 
 cd ~/.config/system
 
-launch /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/system.vim"
-launch --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
-launch --location=hsplit /run/current-system/sw/bin/zsh --login
+launch --var worktree_role=editor /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/system.vim"
+launch --var worktree_role=agent --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
+launch --var worktree_role=shell --location=hsplit /run/current-system/sw/bin/zsh --login
 
 # Neovim
 #
@@ -30,9 +37,9 @@ layout splits
 
 cd ~/Developer/Sources/jrolfs/neovim
 
-launch /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/neovim.vim"
-launch --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
-launch --location=hsplit /run/current-system/sw/bin/zsh --login
+launch --var worktree_role=editor /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/neovim.vim"
+launch --var worktree_role=agent --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
+launch --var worktree_role=shell --location=hsplit /run/current-system/sw/bin/zsh --login
 
 # Private
 #
@@ -43,6 +50,6 @@ layout splits
 
 cd ~/.homesick/repos/private
 
-launch /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/dot--private.vim"
-launch --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
-launch --location=hsplit /run/current-system/sw/bin/zsh --login
+launch --var worktree_role=editor /run/current-system/sw/bin/zsh --login -c "/run/current-system/sw/bin/nvim -S $HOME/.config/nvim/sessions/dot--private.vim"
+launch --var worktree_role=agent --location=vsplit /run/current-system/sw/bin/zsh --login -c "claude"
+launch --var worktree_role=shell --location=hsplit /run/current-system/sw/bin/zsh --login

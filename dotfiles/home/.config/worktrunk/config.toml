@@ -247,6 +247,19 @@ restore = "~/.config/worktrunk/bin/wt-restore {{ args }}"
 [pre-start]
 copy = "wt step copy-ignored"
 
+# Move the rest of the kitty tab to the worktree the shell just switched to:
+# neovim swaps to that worktree's session, the spare shell pane cd's, and the
+# agent pane is left alone. Global rather than per-project because the script
+# keys off kitty panes tagged with a `worktree_role` user variable, so a switch
+# run anywhere else is a no-op rather than something to opt out of.
+#
+# Run through `kitty +launch` rather than the shebang: that uses the
+# interpreter kitty bundles, so the hook does not depend on macOS having
+# /usr/bin/python3 behind a Command Line Tools prompt on a fresh machine. It
+# is also the faster of the two, 30ms against 60ms.
+[post-switch]
+kitty = "kitty +launch ~/.config/kitty/worktree/switch.py {{ worktree_path }}"
+
 [projects."github.com/meterup/frontends"]
 post-start.direnv = "direnv allow && direnv exec . true"
 post-start.deps = "pnpm install"

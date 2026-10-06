@@ -38,7 +38,7 @@ There are no git submodules. The themes and plugins that used to be submodules a
 
 **Git:** config at `home/.config/git/config`, linked as-is rather than generated from `programs.git`. Uses delta as pager, GPG signing by default, git-duet for pairing.
 
-**Kitty terminal:** `home/.config/kitty/` with separate files for bindings, diff, and grab, plus `sessions/`.
+**Kitty terminal:** `home/.config/kitty/` with separate files for bindings, diff, and grab, plus `sessions/`. `worktree/` moves a tab between git worktrees: worktrunk's `post-switch` hook runs `switch.py`, which swaps the neovim pane onto that worktree's session, cd's the shell pane and retitles the tab, leaving the Claude pane where it is. `ctrl+s>w` is the same thing from a keybinding.
 
 **Glide browser:** TypeScript config at `home/.config/glide/`. Its `.envrc` runs `use flake .#glide` against the root flake, so there is no devbox.json. The directory is linked out-of-store so the browser can write back into this tree, which is how `:toolbar_export` in `toolbar.ts` records the toolbar layout.
 
