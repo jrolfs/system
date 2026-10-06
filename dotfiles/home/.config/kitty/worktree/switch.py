@@ -88,7 +88,7 @@ def idle(window):
     return os.path.basename(cmdline[0]).lstrip("-") in SHELLS
 
 
-def inferred_roles(tab):
+def inferred_roles(tab, invoking_id):
     """Work out the roles of an untagged tab from what its panes are running.
 
     Panes only carry `worktree_role` from the session file, so a tab that was
@@ -101,8 +101,14 @@ def inferred_roles(tab):
     anything else, `claude` included, is simply not in the result. Tags are
     still worth having, because a pane busy with a command cannot be
     recognised this way and drops out of the switch for that run.
+
+    An editor is required before any of it counts, which keeps this to tabs
+    laid out like the ones in the session file. Without that, a tab that is
+    just two shells side by side (frontends, api) would start having its
+    second pane cd'd by a switch in the first, which nobody asked for.
     """
     found = {}
+    shells = []
     for window in tab["windows"]:
         processes = window.get("foreground_processes", [])
         names = [
@@ -111,9 +117,20 @@ def inferred_roles(tab):
         ]
         if "editor" not in found and any(name == "nvim" for name in names):
             found["editor"] = window
-        elif "shell" not in found and idle(window):
+        elif idle(window):
+            shells.append(window)
+
+    # The caller is cd'd by worktrunk already, so with more than one idle
+    # shell in the tab it is the least useful of them to pick.
+    for window in shells:
+        if window["id"] != invoking_id:
             found["shell"] = window
-    return found
+            break
+    else:
+        if shells:
+            found["shell"] = shells[0]
+
+    return found if "editor" in found else {}
 
 
 def descendants(pids, depth=2):
@@ -264,7 +281,7 @@ def main(argv):
     if tab is None:
         return 0
 
-    panes = tagged_roles(tab) or inferred_roles(tab)
+    panes = tagged_roles(tab) or inferred_roles(tab, int(window_id))
     if not panes:
         return 0
 
