@@ -44,7 +44,7 @@
 # for years.
 
 let
-  avatar = ../../avatars/${hostname}.png;
+  avatar = ../../media/avatars/${hostname}.png;
 
   # Copied out of the store rather than pointed at inside it: `Picture` would
   # be the only live reference to that store path, so a GC collecting this

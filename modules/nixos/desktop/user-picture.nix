@@ -18,7 +18,7 @@
 # has nothing to draw this on.
 
 let
-  avatar = ../../../avatars/${hostname}.png;
+  avatar = ../../../media/avatars/${hostname}.png;
 in
 lib.mkIf config.desktop.enable {
   # L+ rather than C, so a picture changed in a desktop's own settings goes
