@@ -132,6 +132,7 @@ exclude = ["node_modules/"]
 [aliases]
 handoff = "~/.config/worktrunk/bin/wt-handoff {{ args }}"
 restore = "~/.config/worktrunk/bin/wt-restore {{ args }}"
+relocate = "~/.config/worktrunk/bin/wt-relocate {{ args }}"
 
 # ### User project-specific settings
 #

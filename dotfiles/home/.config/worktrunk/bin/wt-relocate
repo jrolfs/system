@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Move worktrees to where worktree-path now puts them, taking along the state
+# that coding agents file under a worktree's path.
+#
+# `wt step relocate` moves the directory, and nothing else follows it. Claude
+# Code, for one, keeps a project's threads in a store named after its working
+# directory, so a moved worktree's threads stop listing under /resume. Worktrunk
+# has no hook that fires on relocate, so this wraps it: it reads each named
+# worktree's path from git before and after, then hands every pair that changed
+# to each harness below.
+#
+# Branches have to be named. Left to itself, `wt step relocate` moves every
+# worktree whose path doesn't match the template, including ones kept elsewhere
+# on purpose: ~/.config/system has a linked worktree at
+# ~/.homesick/repos/macos.flake that homeshick depends on. So a bare
+# `wt relocate` only previews.
+#
+# Close any agent session running in a worktree before moving it. Re-keying a
+# store that a live session is still writing to loses whatever it writes next.
+#
+#   wt relocate                     preview what is out of place
+#   wt relocate <branch>...         move those, agent state included
+#   wt relocate --dry-run <b>...    preview just those
+#
+# --commit and --clobber are passed through to `wt step relocate`.
+
+set -euo pipefail
+
+# One function per harness that keeps state keyed by a worktree's path. Each is
+# called with the old and new path of a worktree that moved, and returns
+# quietly when it has nothing filed under the old one. To support another
+# harness, add a function and list it here.
+harnesses=(claude_code)
+
+# The store name is the path with every character that isn't a letter or digit
+# turned into a dash, the same munging claude-mv-project's slugFor does.
+claude_code() {
+  [ -d "$HOME/.claude/projects/${1//[^a-zA-Z0-9]/-}" ] || return 0
+  claude-mv-project "$1" "$2"
+}
+
+flags=()
+branches=()
+dry_run=no
+
+for argument in "$@"; do
+  case $argument in
+    --dry-run) dry_run=yes; flags+=("$argument") ;;
+    -*) flags+=("$argument") ;;
+    *) branches+=("$argument") ;;
+  esac
+done
+
+if [ ${#branches[@]} -eq 0 ]; then
+  wt step relocate --dry-run
+  echo "Name the branches to move: wt relocate <branch>..."
+  exit 0
+fi
+
+if [ $dry_run = yes ]; then
+  exec wt step relocate "${flags[@]}" "${branches[@]}"
+fi
+
+path_of() {
+  git worktree list --porcelain \
+    | awk -v ref="refs/heads/$1" '/^worktree /{p=substr($0,10)} $0=="branch " ref {print p}'
+}
+
+before=()
+for branch in "${branches[@]}"; do
+  before+=("$(path_of "$branch")")
+done
+
+wt step relocate ${flags[@]+"${flags[@]}"} "${branches[@]}"
+
+# Keep going past a harness that fails, so one broken store doesn't leave the
+# rest behind, and report it in the exit status.
+status=0
+for index in "${!branches[@]}"; do
+  old=${before[$index]}
+  new=$(path_of "${branches[$index]}")
+  [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ] || continue
+  for harness in "${harnesses[@]}"; do
+    "$harness" "$old" "$new" || {
+      echo "✗ $harness: could not move state for ${branches[$index]}" >&2
+      status=1
+    }
+  done
+done
+exit $status
