@@ -1,41 +1,82 @@
 #!/usr/bin/env bash
 # Move worktrees to where worktree-path now puts them, taking along the state
-# that coding agents file under a worktree's path.
+# that is filed under a worktree's path.
 #
 # `wt step relocate` moves the directory, and nothing else follows it. Claude
 # Code, for one, keeps a project's threads in a store named after its working
 # directory, so a moved worktree's threads stop listing under /resume. Worktrunk
 # has no hook that fires on relocate, so this wraps it: it records every
 # worktree's path from git before and after, then hands each pair that changed
-# to the harnesses below.
+# to the steps below.
 #
 # Like `wt step relocate`, it moves every worktree whose path doesn't match the
 # template unless branches are named, so preview with --dry-run first. To keep a
 # worktree where it is for good, `git worktree lock` it: relocate skips locked
-# worktrees, though --dry-run still lists them as if they would move.
+# worktrees, though a dry run still lists them as if they would move.
 #
 # Close any agent session running in a worktree before moving it. Re-keying a
 # store that a live session is still writing to loses whatever it writes next.
 #
-#   wt relocate --dry-run           what would move, and where
+#   wt relocate -- --dry-run        what would move, and where
 #   wt relocate                     move every mismatched worktree
 #   wt relocate <branch>...         move just those
 #
-# --commit and --clobber are passed through to `wt step relocate`.
+# --commit and --clobber are passed through to `wt step relocate`. --dry-run
+# needs the `--` because worktrunk keeps a bare --dry-run after an alias name
+# for itself and refuses it.
 
 set -euo pipefail
 
-# One function per harness that keeps state keyed by a worktree's path. Each is
-# called with the old and new path of a worktree that moved, and returns
-# quietly when it has nothing filed under the old one. To support another
-# harness, add a function and list it here.
-harnesses=(claude_code)
+# One function per kind of state filed under a worktree's path. Each is called
+# with the old and new path of a worktree that moved, and returns quietly when
+# it has nothing under the old one. Another agent harness is another function
+# here.
+steps=(claude_code handoff_snapshot)
 
 # The store name is the path with every character that isn't a letter or digit
 # turned into a dash, the same munging claude-mv-project's slugFor does.
 claude_code() {
   [ -d "$HOME/.claude/projects/${1//[^a-zA-Z0-9]/-}" ] || return 0
   claude-mv-project "$1" "$2"
+}
+
+# A `wt handoff` snapshot is named after the worktree's directory and records its
+# path, which is where `wt restore` recreates it, so after a move the old one
+# would bring the worktree back at the old path. The path is part of the
+# snapshot's commit, so it can only be deleted, not updated. Only a snapshot
+# recorded at exactly the old path is touched, and on origin only the commit
+# inspected here, so a newer handoff pushed in the meantime survives. The commit
+# stays in the object store, and the message says how to put the ref back.
+handoff_snapshot() {
+  local ref commit host on_origin=no
+  ref=refs/wip/$(snapshot_name "$1")
+  git fetch --quiet origin "+$ref:$ref" 2>/dev/null && on_origin=yes
+  commit=$(git rev-parse --verify --quiet "$ref") || return 0
+  [ "$(trailer Wt-Path "$ref")" = "$1" ] || return 0
+  host=$(trailer Wt-Host "$ref")
+
+  if [ $on_origin = yes ]; then
+    git push --quiet --force-with-lease="$ref:$commit" origin ":$ref" || return 1
+  fi
+  git update-ref -d "$ref" "$commit"
+
+  echo "Deleted handoff snapshot ${ref#refs/wip/} from ${host:-an unknown host}, which would restore to $1."
+  echo "  wt handoff again to publish it from $2. To undo: git update-ref $ref $commit && git push origin $ref"
+}
+
+# Mirrors wt-handoff's key_for: the directory name, with the parent folded in
+# when the directory repeats the main checkout's name.
+snapshot_name() {
+  local name
+  name=$(basename "$1")
+  if [ "$name" = "$main_dir" ] && [ "$1" != "$main_top" ]; then
+    name="$(basename "$(dirname "$1")")-$name"
+  fi
+  printf '%s' "$name"
+}
+
+trailer() {
+  git log -1 --format="%(trailers:key=$1,valueonly=true)" "$2" | head -1
 }
 
 for argument in "$@"; do
@@ -50,11 +91,13 @@ worktrees() {
   '
 }
 
+main_top=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+main_dir=$(basename "$main_top")
 before=$(worktrees)
 
 # A relocate that stops partway may still have moved some worktrees, and their
-# state needs to follow. The same goes for a harness that fails: keep going so
-# one broken store doesn't strand the rest, and report it in the exit status.
+# state needs to follow. The same goes for a step that fails: keep going so one
+# broken store doesn't strand the rest, and report it in the exit status.
 status=0
 wt step relocate "$@" || status=$?
 
@@ -62,9 +105,9 @@ after=$(worktrees)
 while IFS=$'\t' read -r branch old; do
   new=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2 }' <<<"$after")
   [ -n "$new" ] && [ "$old" != "$new" ] || continue
-  for harness in "${harnesses[@]}"; do
-    "$harness" "$old" "$new" || {
-      echo "✗ $harness: could not move state for $branch" >&2
+  for step in "${steps[@]}"; do
+    "$step" "$old" "$new" || {
+      echo "✗ $step: could not move state for $branch" >&2
       status=1
     }
   done

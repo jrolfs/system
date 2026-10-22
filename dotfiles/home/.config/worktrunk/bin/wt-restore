@@ -24,7 +24,7 @@ while [ $# -gt 0 ]; do
     --all) all=yes ;;
     -n | --dry-run) dry=yes ;;
     -h | --help)
-      echo "usage: wt restore [--all] [--dry-run] [pattern...]"
+      echo "usage: wt restore [--all] [pattern...] [-- --dry-run]"
       exit 0
       ;;
     -*)
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$all" = no ] && [ ${#patterns[@]} -eq 0 ]; then
-  echo "usage: wt restore [--all] [--dry-run] [pattern...]" >&2
+  echo "usage: wt restore [--all] [pattern...] [-- --dry-run]" >&2
   exit 1
 fi
 

@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
       ;;
     --push-arg=*) push_args+=("${1#*=}") ;;
     -h | --help)
-      echo "usage: wt handoff [--all] [--dry-run] [--no-verify] [--push-arg=ARG] [pattern...]"
+      echo "usage: wt handoff [--all] [--no-verify] [--push-arg=ARG] [pattern...] [-- --dry-run]"
       exit 0
       ;;
     -*)
