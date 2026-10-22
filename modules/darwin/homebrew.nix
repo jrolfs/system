@@ -238,6 +238,7 @@ in
         name = "1password";
         greedy = true;
       }
+
       "1password-cli"
       "acorn"
       "arq"
@@ -247,6 +248,7 @@ in
       "cleanshot"
       "cursor"
       "daisydisk"
+      "dash"
       "discord"
       "fantastical"
       "figma"
@@ -259,6 +261,7 @@ in
       "google-chrome@canary"
       "grammarly-desktop"
       "hammerspoon"
+      "home-assistant"
       "jrolfs/tap/lingon-pro"
       "jrolfs/tap/unite-pro"
       "karabiner-elements"
@@ -286,9 +289,6 @@ in
       "zed"
       "zed@preview"
       "zoom"
-      # back. Deleting that module restores the stock cask everywhere.
-      # from source (patched for native picture in picture) or to add this cask
-      # kaset is not listed here: kaset.nix decides per host whether to build it
 
       # Fonts
       "font-atkinson-hyperlegible"
