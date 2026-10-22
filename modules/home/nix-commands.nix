@@ -27,11 +27,12 @@
 # Run from inside a worktree under ~/.config/.system with none of the last
 # three, nix-switch switches that worktree and says so, because testing a
 # branch is the usual reason to be there. It is limited to that directory
-# because ~/.homesick/repos/macos.flake is a linked worktree of this repo too,
-# on a branch whose configuration predates most of this one, and switching to
-# it by accident would be hard to notice and slow to undo. Either way the
-# switch lasts until the next one: a later nix-switch from the main checkout
-# puts main back.
+# because a worktree can end up anywhere: `wt restore` recreates one at
+# whatever path it had on the machine that handed it off, and that is how a
+# stale migration-era worktree once sat in ~/.homesick/repos. Switching to one
+# of those by accident would be hard to notice and slow to undo, so outside
+# ~/.config/.system it takes --worktree. Either way the switch lasts until the
+# next one: a later nix-switch from the main checkout puts main back.
 #
 # A worktree is still built as a git flake, so untracked files are left out of
 # it until they are `git add`ed, and a new module that isn't staged evaluates
