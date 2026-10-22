@@ -36,6 +36,8 @@ nix-switch
 nix-switch --pull       # fast-forward the tree being switched first, from anywhere
 nix-switch --worktree=<branch>  # switch a worktree's flake instead of main's
 nix-switch --main       # main checkout, even from inside a worktree
+wt verify               # is the running system exactly this worktree's build?
+wt land                 # wt merge (rebase, commits kept), then nix-switch --main
 nix-switch --update     # refresh flake.lock first (--update=nixpkgs for one input)
 nix-switch --brew       # macOS: run `brew bundle` even if the Brewfile is unchanged
 nix-switch --no-brew    # macOS: skip it for one switch
