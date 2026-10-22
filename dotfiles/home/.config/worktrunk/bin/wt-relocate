@@ -5,22 +5,21 @@
 # `wt step relocate` moves the directory, and nothing else follows it. Claude
 # Code, for one, keeps a project's threads in a store named after its working
 # directory, so a moved worktree's threads stop listing under /resume. Worktrunk
-# has no hook that fires on relocate, so this wraps it: it reads each named
-# worktree's path from git before and after, then hands every pair that changed
-# to each harness below.
+# has no hook that fires on relocate, so this wraps it: it records every
+# worktree's path from git before and after, then hands each pair that changed
+# to the harnesses below.
 #
-# Branches have to be named. Left to itself, `wt step relocate` moves every
-# worktree whose path doesn't match the template, including ones kept elsewhere
-# on purpose: ~/.config/system has a linked worktree at
-# ~/.homesick/repos/macos.flake that homeshick depends on. So a bare
-# `wt relocate` only previews.
+# Like `wt step relocate`, it moves every worktree whose path doesn't match the
+# template unless branches are named, so preview with --dry-run first. To keep a
+# worktree where it is for good, `git worktree lock` it: relocate skips locked
+# worktrees, though --dry-run still lists them as if they would move.
 #
 # Close any agent session running in a worktree before moving it. Re-keying a
 # store that a live session is still writing to loses whatever it writes next.
 #
-#   wt relocate                     preview what is out of place
-#   wt relocate <branch>...         move those, agent state included
-#   wt relocate --dry-run <b>...    preview just those
+#   wt relocate --dry-run           what would move, and where
+#   wt relocate                     move every mismatched worktree
+#   wt relocate <branch>...         move just those
 #
 # --commit and --clobber are passed through to `wt step relocate`.
 
@@ -39,52 +38,35 @@ claude_code() {
   claude-mv-project "$1" "$2"
 }
 
-flags=()
-branches=()
-dry_run=no
-
 for argument in "$@"; do
-  case $argument in
-    --dry-run) dry_run=yes; flags+=("$argument") ;;
-    -*) flags+=("$argument") ;;
-    *) branches+=("$argument") ;;
-  esac
+  [ "$argument" = --dry-run ] && exec wt step relocate "$@"
 done
 
-if [ ${#branches[@]} -eq 0 ]; then
-  wt step relocate --dry-run
-  echo "Name the branches to move: wt relocate <branch>..."
-  exit 0
-fi
-
-if [ $dry_run = yes ]; then
-  exec wt step relocate "${flags[@]}" "${branches[@]}"
-fi
-
-path_of() {
-  git worktree list --porcelain \
-    | awk -v ref="refs/heads/$1" '/^worktree /{p=substr($0,10)} $0=="branch " ref {print p}'
+# Tab-separated `branch path` lines, one per worktree with a branch checked out.
+worktrees() {
+  git worktree list --porcelain | awk '
+    /^worktree / { path = substr($0, 10) }
+    /^branch refs\/heads\// { print substr($0, 19) "\t" path }
+  '
 }
 
-before=()
-for branch in "${branches[@]}"; do
-  before+=("$(path_of "$branch")")
-done
+before=$(worktrees)
 
-wt step relocate ${flags[@]+"${flags[@]}"} "${branches[@]}"
-
-# Keep going past a harness that fails, so one broken store doesn't leave the
-# rest behind, and report it in the exit status.
+# A relocate that stops partway may still have moved some worktrees, and their
+# state needs to follow. The same goes for a harness that fails: keep going so
+# one broken store doesn't strand the rest, and report it in the exit status.
 status=0
-for index in "${!branches[@]}"; do
-  old=${before[$index]}
-  new=$(path_of "${branches[$index]}")
-  [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ] || continue
+wt step relocate "$@" || status=$?
+
+after=$(worktrees)
+while IFS=$'\t' read -r branch old; do
+  new=$(awk -F '\t' -v branch="$branch" '$1 == branch { print $2 }' <<<"$after")
+  [ -n "$new" ] && [ "$old" != "$new" ] || continue
   for harness in "${harnesses[@]}"; do
     "$harness" "$old" "$new" || {
-      echo "✗ $harness: could not move state for ${branches[$index]}" >&2
+      echo "✗ $harness: could not move state for $branch" >&2
       status=1
     }
   done
-done
+done <<<"$before"
 exit $status
