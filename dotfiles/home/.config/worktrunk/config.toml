@@ -260,6 +260,17 @@ copy = "wt step copy-ignored"
 [post-switch]
 kitty = "kitty +launch ~/.config/kitty/worktree/switch.py {{ worktree_path }}"
 
+# This repo lives in ~/.config, where the default sibling layout put a
+# `system.<branch>` directory beside every other app's config. One hidden
+# directory holds them instead.
+#
+# Deliberately not nested under the checkout itself (`.worktrees/`). Claude
+# Code loads CLAUDE.md from every directory above the session, so a nested
+# worktree session would also load main's, and a branch that edits CLAUDE.md
+# would see two versions that disagree.
+[projects."github.com/jrolfs/system"]
+worktree-path = "{{ repo_path }}/../.system/{{ branch | sanitize }}"
+
 [projects."github.com/meterup/frontends"]
 post-start.direnv = "direnv allow && direnv exec . true"
 post-start.deps = "pnpm install"
