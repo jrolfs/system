@@ -17,13 +17,13 @@
 # Close any agent session running in a worktree before moving it. Re-keying a
 # store that a live session is still writing to loses whatever it writes next.
 #
-#   wt relocate -- --dry-run        what would move, and where
+#   wt relocate --dry-run=1         what would move, and where
 #   wt relocate                     move every mismatched worktree
 #   wt relocate <branch>...         move just those
 #
-# --commit and --clobber are passed through to `wt step relocate`. --dry-run
-# needs the `--` because worktrunk keeps a bare --dry-run after an alias name
-# for itself and refuses it.
+# --commit and --clobber are passed through to `wt step relocate`. The preview
+# is spelled --dry-run=1 because worktrunk refuses a bare --dry-run after an
+# alias name; the alias in config.toml turns it into this script's --dry-run.
 
 set -euo pipefail
 
