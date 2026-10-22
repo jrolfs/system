@@ -1,4 +1,4 @@
-{ pkgs, inputs, userName, ... }:
+{ pkgs, lib, inputs, userName, ... }:
 
 let
   overlays = import ../../overlays inputs;
@@ -92,6 +92,21 @@ in
 
   system.activationScripts.applications.enable = true;
   system.primaryUser = "jamie";
+
+  # Hands back anything root left in the user's nix cache. nix-switch ran
+  # darwin-rebuild under `sudo -E`, which kept this user's HOME, so root's
+  # evaluation cache landed in ~/.cache/nix owned by root, and evaluating as the
+  # user afterwards failed with "attempt to write a readonly database". The
+  # switch uses `sudo -H` now, but a machine's first switch past that change
+  # still runs the old command, so this repairs it rather than leaving a manual
+  # chown to remember on each one. Cheap enough to keep: one `find` over a
+  # directory that is normally already clean.
+  system.activationScripts.postActivation.text = lib.mkAfter # bash
+    ''
+      if [ -d /Users/${userName}/.cache/nix ]; then
+        find /Users/${userName}/.cache/nix -user root -exec chown ${userName}:staff {} +
+      fi
+    '';
 
   nixpkgs.config = {
     allowBroken = true;

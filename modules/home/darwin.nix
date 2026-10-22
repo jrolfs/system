@@ -90,15 +90,16 @@ in
   # it regardless, to pick up upstream cask releases or a version bump in a
   # jrolfs/tap .rb; --no-brew skips it for one switch.
   #
-  # -H gives root its own HOME while -E keeps the rest of the environment. With
-  # -E alone root's evaluation cache landed in ~/.cache/nix/eval-cache-v5 owned
-  # by root, and evaluating as yourself afterwards (`wt verify`, `nix eval`)
-  # failed to write to it with "attempt to write a readonly database". Nothing
-  # in the switch reads from this user's home: no flake input is fetched over
-  # SSH and there is no user nix.conf.
+  # -H gives root its own HOME. This used to be `sudo -E`, which carried over
+  # the per-machine NIX_MACOS_EXCLUDE_CASKS from before the flake. Nothing reads
+  # that any more (exclusions are keyed by hostname in excluded-apps.nix, and a
+  # pure flake evaluation can't see the environment anyway), and keeping this
+  # user's HOME put root's evaluation cache in ~/.cache/nix owned by root, which
+  # later evaluations as this user could not write to. The cleanup for that is
+  # in modules/darwin/default.nix.
   nixCommands = {
-    switch = "sudo -EH darwin-rebuild switch";
-    build = "sudo -EH darwin-rebuild build";
+    switch = "sudo -H darwin-rebuild switch";
+    build = "sudo -H darwin-rebuild build";
     locals = "brew=auto flag=";
     flags = [
       { pattern = "--brew"; action = "brew=reset; flag=$argument"; description = "run brew bundle even if the Brewfile is unchanged"; }
