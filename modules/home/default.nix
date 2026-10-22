@@ -163,6 +163,21 @@ in
         fi
       '';
 
+  # The same transition for ~/.config/worktrunk, which was a link to the store
+  # directory until it became recursive (see the xdg.configFile entry) so
+  # worktrunk could write approvals.toml there. Left in place, the new
+  # per-file links would be created through it into the store and fail just
+  # as zinit's did. Only a symlink is removed; once it's a real directory it
+  # holds approvals worth keeping. Safe to delete once every machine has
+  # switched past this change.
+  home.activation.worktrunkConfigDirectory =
+    lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] # bash
+      ''
+        if [ -L "${config.xdg.configHome}/worktrunk" ]; then
+          run rm $VERBOSE_ARG "${config.xdg.configHome}/worktrunk"
+        fi
+      '';
+
   # kitty.conf sets `listen_on unix:~/.local/share/kitty/socket`, and kitty
   # bind()s that socket while starting up without creating the directory it
   # lives in. Boss.__init__ wraps the call in a bare `except Exception`, so a
@@ -270,7 +285,14 @@ in
     "mise".source = "${dotfiles}/.config/mise";
     "k9s".source = "${dotfiles}/.config/k9s";
     "tridactyl".source = "${dotfiles}/.config/tridactyl";
-    "worktrunk".source = "${dotfiles}/.config/worktrunk";
+    # Recursive so ~/.config/worktrunk stays a real directory: worktrunk writes
+    # approvals.toml (and its lock) beside config.toml, and a link to the store
+    # directory left every project hook and alias asking for approval again on
+    # each run, with "Failed to save command approval".
+    "worktrunk" = {
+      source = "${dotfiles}/.config/worktrunk";
+      recursive = true;
+    };
     "starship".source = "${dotfiles}/.config/starship";
     "starship.toml".source = "${dotfiles}/.config/starship.toml";
 

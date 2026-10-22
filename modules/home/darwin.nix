@@ -89,9 +89,16 @@ in
   # the Brewfile changed (the gate in modules/darwin/homebrew.nix). --brew runs
   # it regardless, to pick up upstream cask releases or a version bump in a
   # jrolfs/tap .rb; --no-brew skips it for one switch.
+  #
+  # -H gives root its own HOME while -E keeps the rest of the environment. With
+  # -E alone root's evaluation cache landed in ~/.cache/nix/eval-cache-v5 owned
+  # by root, and evaluating as yourself afterwards (`wt verify`, `nix eval`)
+  # failed to write to it with "attempt to write a readonly database". Nothing
+  # in the switch reads from this user's home: no flake input is fetched over
+  # SSH and there is no user nix.conf.
   nixCommands = {
-    switch = "sudo -E darwin-rebuild switch";
-    build = "sudo -E darwin-rebuild build";
+    switch = "sudo -EH darwin-rebuild switch";
+    build = "sudo -EH darwin-rebuild build";
     locals = "brew=auto flag=";
     flags = [
       { pattern = "--brew"; action = "brew=reset; flag=$argument"; description = "run brew bundle even if the Brewfile is unchanged"; }
