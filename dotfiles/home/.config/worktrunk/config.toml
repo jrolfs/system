@@ -268,8 +268,15 @@ kitty = "kitty +launch ~/.config/kitty/worktree/switch.py {{ worktree_path }}"
 # Code loads CLAUDE.md from every directory above the session, so a nested
 # worktree session would also load main's, and a branch that edits CLAUDE.md
 # would see two versions that disagree.
+#
+# The repo's aliases (`wt land`, `wt verify`) are in its own .config/wt.toml;
+# these two can't go there, since worktrunk reads them only from user config.
+# Commits are kept rather than squashed: a branch here is usually a sequence of
+# separately explained changes, and the rebase that still runs first is what
+# keeps main linear.
 [projects."github.com/jrolfs/system"]
 worktree-path = "{{ repo_path }}/../.system/{{ branch | sanitize }}"
+merge.squash = false
 
 [projects."github.com/meterup/frontends"]
 post-start.direnv = "direnv allow && direnv exec . true"

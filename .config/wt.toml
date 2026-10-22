@@ -1,0 +1,45 @@
+# Worktrunk project config for this repo. Where the worktrees live and how
+# `wt merge` merges (rebase, commits kept) can only be set from user config, so
+# those are under [projects."github.com/jrolfs/system"] in
+# dotfiles/home/.config/worktrunk/config.toml instead.
+#
+# Project aliases need approving the first time they run and again whenever
+# they change: `wt config approvals add`.
+
+[aliases]
+# Merge this worktree's branch, then switch the running system back to main.
+# After testing a branch with `nix-switch` from its worktree, the system is
+# still running that worktree's build, and the next switch from main is what
+# undoes it. This does it in the same step, and only if the merge went through:
+# a rebase conflict stops it before anything is switched.
+#
+# `cd` because the merge has just removed the worktree this runs in. --main
+# because nix-switch would otherwise look at the working directory to decide.
+land = "wt merge {{ args }} && cd {{ primary_worktree_path }} && nix-switch --main"
+
+# Whether the running system is exactly what this worktree builds for this
+# host, comparing store paths. It evaluates without building, and includes
+# uncommitted changes to tracked files, since that is what nix-switch builds
+# too. Not a pre-merge hook on purpose: merging first and switching afterwards
+# is a normal way to land something, so this is for checking, not gating.
+verify = '''
+set -eu
+tree={{ worktree_path }}
+branch={{ branch }}
+host=$(hostname -s)
+case $(uname) in
+  Darwin) attribute="darwinConfigurations.$host.system" ;;
+  *) attribute="nixosConfigurations.$host.config.system.build.toplevel" ;;
+esac
+expected=$(nix eval --raw "$tree#$attribute.outPath")
+running=$(readlink /run/current-system)
+if [ "$expected" = "$running" ]; then
+  echo "✓ running $branch on $host: $running"
+else
+  echo "✗ not running $branch on $host"
+  echo "  running:  $running"
+  echo "  $branch builds: $expected"
+  echo "  nix-switch from $tree to test it"
+  exit 1
+fi
+'''
