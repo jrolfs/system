@@ -17,13 +17,13 @@
 # Close any agent session running in a worktree before moving it. Re-keying a
 # store that a live session is still writing to loses whatever it writes next.
 #
-#   wt relocate --dry-run=1         what would move, and where
+#   wt relocate --preview           what would move, and where
 #   wt relocate                     move every mismatched worktree
 #   wt relocate <branch>...         move just those
 #
 # --commit and --clobber are passed through to `wt step relocate`. The preview
-# is spelled --dry-run=1 because worktrunk refuses a bare --dry-run after an
-# alias name; the alias in config.toml turns it into this script's --dry-run.
+# is --preview rather than --dry-run because worktrunk refuses a bare
+# --dry-run after an alias name; wt-handoff and wt-restore take it too.
 
 set -euo pipefail
 
@@ -80,7 +80,16 @@ trailer() {
 }
 
 for argument in "$@"; do
-  [ "$argument" = --dry-run ] && exec wt step relocate "$@"
+  case $argument in
+    --preview | --dry-run)
+      preview=()
+      for each in "$@"; do
+        [ "$each" = --preview ] && each=--dry-run
+        preview+=("$each")
+      done
+      exec wt step relocate "${preview[@]}"
+      ;;
+  esac
 done
 
 # Tab-separated `branch path` lines, one per worktree with a branch checked out.

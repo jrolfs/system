@@ -129,14 +129,10 @@ exclude = ["node_modules/"]
 #
 # Aliases defined here apply to all projects. For project-specific aliases, use the project config (https://worktrunk.dev/config/#project-configuration) `[aliases]` section instead.
 
-# Worktrunk keeps a bare `--dry-run` after an alias name for itself and refuses
-# it, but binds `--dry-run=<value>` to `{{ dry_run }}` when the template
-# mentions it. These turn that back into the script's own --dry-run, so a
-# preview is `wt relocate --dry-run=1`. Any value works, 0 included.
 [aliases]
-handoff = "~/.config/worktrunk/bin/wt-handoff {% if dry_run is defined %}--dry-run {% endif %}{{ args }}"
-restore = "~/.config/worktrunk/bin/wt-restore {% if dry_run is defined %}--dry-run {% endif %}{{ args }}"
-relocate = "~/.config/worktrunk/bin/wt-relocate {% if dry_run is defined %}--dry-run {% endif %}{{ args }}"
+handoff = "~/.config/worktrunk/bin/wt-handoff {{ args }}"
+restore = "~/.config/worktrunk/bin/wt-restore {{ args }}"
+relocate = "~/.config/worktrunk/bin/wt-relocate {{ args }}"
 
 # ### User project-specific settings
 #
