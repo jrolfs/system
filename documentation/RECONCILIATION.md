@@ -75,9 +75,10 @@ SECRETS.md), so it was not content-diffed.
   as a vendored checkout plus `themes/current.conf`; the flake handles kitty
   theming differently. Confirm the flake's kitty theme path covers what
   `current.conf` selected.
-- **`.config/claude/mcp.json` + `~/.claude/bin/claude-mcp-sync`**: castle-only
-  today. Decide whether MCP server config should be flake-declared (it pairs
-  with the `claude-mcp-sync` script that syncs it into project `.mcp.json`s).
+- **`.config/claude/mcp.json` + `~/.claude/bin/claude-mcp-sync`**: decided,
+  flake-declared. Servers live in `programs.mcp.servers` in
+  `modules/home/mcp.nix`, which hands them to Claude Code as a generated
+  plugin, so neither the manifest nor the sync script exists any more.
 
 ## (d) Backport gaps: legacy `macos` repo → flake
 
@@ -130,8 +131,7 @@ of these are already known there. Grouped by disposition:
 (intentionally dropped here per the Lix/devbox plan).
 
 **Live, need a home in the flake**: `.claude/keybindings.json`,
-`.claude/bin/{claude-mcp-sync,claude-zed-threads}`,
-`.config/claude/mcp.json`, `.cargo/config.toml`, `.pip/pip.conf`,
+`.claude/bin/claude-zed-threads`, `.cargo/config.toml`, `.pip/pip.conf`,
 `.config/kitty/themes/` (see decision above), `.local/share/spicetify`,
 `.local/share/kitty/.gitkeep` (dir creation, trivially an activation mkdir).
 
@@ -142,7 +142,7 @@ of these are already known there. Grouped by disposition:
 
 Already castle-linked today (so the flake should own them at migration):
 `settings.json`, `keybindings.json`, `CLAUDE.md`, `commands/resume-zed.md`,
-`bin/claude-mcp-sync`, `bin/claude-zed-threads`.
+`bin/claude-zed-threads`.
 
 Config-like but not castle-tracked yet, worth declaring:
 - `rules/typescript.mdc`
@@ -150,7 +150,6 @@ Config-like but not castle-tracked yet, worth declaring:
   `~/.agents/skills/`, which holds both; decide whether `~/.agents` is the
   canonical home and the flake links `~/.claude/skills` entries into it)
 - `settings.local.json`: decide per-machine vs shared before declaring
-- `.config/claude/mcp.json` (pairs with `claude-mcp-sync`)
 
 State, never declare or sync: `.credentials.json`, `projects/`, `todos/`,
 `sessions/`, `session-env/`, `shell-snapshots/`, `history.jsonl`, `daemon.*`,

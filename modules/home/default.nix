@@ -48,7 +48,7 @@ let
     (builtins.readDir "${dotfiles}/.local/share/gh/extensions");
 in
 {
-  imports = [ ./eza.nix ./neovim.nix ./nix-commands.nix ./ssh.nix ]
+  imports = [ ./eza.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./ssh.nix ]
     ++ lib.optional (builtins.pathExists ./hosts/${hostname}.nix) ./hosts/${hostname}.nix;
 
   home.username = userName;
