@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 
 # MCP servers available in every session on every machine, declared once in
 # programs.mcp.servers and handed to each harness through home-manager's own
@@ -26,8 +26,20 @@
 {
   programs.mcp = {
     enable = true;
-    servers = {
+
+    # `enabled = false` on a server leaves it out entirely instead of passing it
+    # through. home-manager's own handling of that flag disables a Claude Code
+    # server by generating ~/.claude/settings.json, and that file is already an
+    # out-of-store link into the repo (default.nix), so the build fails on the
+    # conflicting target.
+    servers = lib.filterAttrs (_: server: server.enabled or null != false) {
+      airtable.url = "https://mcp.airtable.com/mcp";
+      figma.url = "https://mcp.figma.com/mcp";
+      granola.url = "https://mcp.granola.ai/mcp";
       linear.url = "https://mcp.linear.app/mcp";
+      ramp.url = "https://mcp.ramp.com/mcp";
+      sentry.url = "https://mcp.sentry.dev/mcp";
+      superhuman.url = "https://mcp.mail.superhuman.com/mcp";
 
       # By store path rather than from PATH, so the server is the one this
       # generation built and nothing else has to install it.
