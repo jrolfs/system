@@ -9,10 +9,13 @@
 #
 # nix-switch takes:
 #
-#   --pull              fast-forward the configuration repo first, from any
+#   --pull              fast-forward the tree being switched first, from any
 #                       directory
 #   --update            refresh flake.lock first, all inputs or, with
 #   --update=<input>    --update=nixpkgs, just that one (repeat for several)
+#   --worktree          switch the worktree of this repo the shell is in
+#   --worktree=<branch> switch the worktree with that branch checked out
+#   --main              switch the main checkout, even from inside a worktree
 #
 # plus whatever the platform adds, and passes anything else through to the
 # rebuild. --update has to be asked for: the rebuild only ever reads the lock,
@@ -20,6 +23,19 @@
 # underneath it silently would cost more than the keystrokes save. The lock
 # change is left uncommitted on purpose, to be reviewed with the switch that
 # used it.
+#
+# Run from inside a worktree under ~/.config/.system with none of the last
+# three, nix-switch switches that worktree and says so, because testing a
+# branch is the usual reason to be there. It is limited to that directory
+# because ~/.homesick/repos/macos.flake is a linked worktree of this repo too,
+# on a branch whose configuration predates most of this one, and switching to
+# it by accident would be hard to notice and slow to undo. Either way the
+# switch lasts until the next one: a later nix-switch from the main checkout
+# puts main back.
+#
+# A worktree is still built as a git flake, so untracked files are left out of
+# it until they are `git add`ed, and a new module that isn't staged evaluates
+# as if it did not exist.
 
 let
   inherit (lib) mkOption types;
@@ -39,6 +55,12 @@ let
   # machine is mid-rename.
   directory = "${config.home.homeDirectory}/.config/system";
   flake = "${directory}#${hostname}";
+
+  # Where worktrunk puts this repo's worktrees, from the `worktree-path` entry
+  # for it in dotfiles/home/.config/worktrunk/config.toml. Only used to decide
+  # whether a bare nix-switch should pick up the worktree it's run from; an
+  # explicit --worktree finds the tree through git wherever it lives.
+  worktrees = "${config.home.homeDirectory}/.config/.system";
 
   # Every flake input, for completing --update=<input> and nix-update's
   # arguments. Taken from the flake that built this configuration, so it's
@@ -101,14 +123,22 @@ in
     ''
       #compdef nix-switch nix-update
 
+      _nix_switch_worktrees() {
+        local -a branches
+        branches=(''${(f)"$(git -C '${directory}' worktree list --porcelain 2>/dev/null | sed -n 's|^branch refs/heads/||p')"})
+        _describe 'worktree branch' branches
+      }
+
       case $service in
         nix-update)
           _arguments '*:flake input:(${inputNames})'
           ;;
         nix-switch)
           _arguments \
-            '--pull[fast-forward ~/.config/system first]' \
-            '*--update=-[refresh flake.lock first, all inputs or the one named]::flake input:(${inputNames})'${flagSpecs}
+            '--pull[fast-forward the tree being switched first]' \
+            '*--update=-[refresh flake.lock first, all inputs or the one named]::flake input:(${inputNames})' \
+            '(--main)--worktree=-[switch a worktree: this one, or the branch named]::worktree branch:_nix_switch_worktrees' \
+            '(--worktree)--main[switch ~/.config/system even from a worktree]'${flagSpecs}
           ;;
       esac
     '';
@@ -125,8 +155,50 @@ in
       # wants. Naming inputs updates only those: `nix-update nixpkgs`.
       alias nix-update="nix flake update --flake '${directory}'"
 
+      # Prints the tree nix-switch should build. `mode` is auto (no flag), main,
+      # here (a bare --worktree) or branch (--worktree=<branch>). A worktree is
+      # recognised by its git common directory being the main checkout's, so a
+      # directory under ${worktrees} that belongs to some other repo falls back
+      # to main rather than being switched to.
+      function _nix_switch_tree {
+        local mode=$1 branch=$2 main='${directory}' tree common
+
+        case $mode in
+          main)
+            print -r -- $main
+            return
+            ;;
+          branch)
+            tree=$(git -C $main worktree list --porcelain \
+              | awk -v ref="refs/heads/$branch" '/^worktree /{p=substr($0,10)} $0=="branch " ref {print p}')
+            if [[ -z $tree ]]; then
+              print -u2 "nix-switch: no worktree has $branch checked out"
+              return 1
+            fi
+            print -r -- $tree
+            return
+            ;;
+        esac
+
+        if [[ $mode == auto && $PWD/ != '${worktrees}'/* ]]; then
+          print -r -- $main
+          return
+        fi
+
+        tree=$(git -C $PWD rev-parse --show-toplevel 2>/dev/null)
+        common=$(git -C $PWD rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+        if [[ $common == $main/.git ]]; then
+          print -r -- $tree
+        elif [[ $mode == auto ]]; then
+          print -r -- $main
+        else
+          print -u2 "nix-switch: $PWD is not in a worktree of $main"
+          return 1
+        fi
+      }
+
       function nix-switch {
-        local update=no pull=no ${cfg.locals}
+        local update=no pull=no mode=auto branch= tree ${cfg.locals}
         local -a rest inputs
 
         for argument in "$@"; do
@@ -134,22 +206,32 @@ in
             --pull) pull=yes ;;
             --update) update=yes ;;
             --update=*) update=yes; inputs+=("''${argument#--update=}") ;;
+            --main) mode=main ;;
+            --worktree) mode=here ;;
+            --worktree=*) mode=branch; branch=''${argument#--worktree=} ;;
       ${flagCases}      *) rest+=("$argument") ;;
           esac
         done
 
+        tree=$(_nix_switch_tree $mode $branch) || return
+
+        if [[ $tree != '${directory}' ]]; then
+          print -u2 "nix-switch: switching worktree $(git -C $tree branch --show-current) ($tree#${hostname})"
+          [[ $mode == auto ]] && print -u2 "            --main switches ${directory} instead"
+        fi
+
         # Before --update: the update rewrites flake.lock, which a pull
         # afterwards would collide with.
         if [[ $pull == yes ]]; then
-          git -C '${directory}' pull --ff-only || return
+          git -C $tree pull --ff-only || return
         fi
 
         if [[ $update == yes ]]; then
-          nix flake update --flake '${directory}' "''${inputs[@]}" || return
+          nix flake update --flake $tree "''${inputs[@]}" || return
         fi
 
       ${cfg.beforeSwitch}
-        ${cfg.switch} --flake '${flake}' --show-trace "''${rest[@]}"
+        ${cfg.switch} --flake "$tree#${hostname}" --show-trace "''${rest[@]}"
       }
     '';
 }

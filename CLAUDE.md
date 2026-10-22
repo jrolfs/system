@@ -33,7 +33,9 @@ The migration from homeshick castles and nix channels is still in progress. The
 # Build and activate this host. Generated for every machine by
 # modules/home/nix-commands.nix, with platform flags from darwin.nix/linux.nix.
 nix-switch
-nix-switch --pull       # fast-forward ~/.config/system first, from anywhere
+nix-switch --pull       # fast-forward the tree being switched first, from anywhere
+nix-switch --worktree=<branch>  # switch a worktree's flake instead of main's
+nix-switch --main       # main checkout, even from inside a worktree
 nix-switch --update     # refresh flake.lock first (--update=nixpkgs for one input)
 nix-switch --brew       # macOS: run `brew bundle` even if the Brewfile is unchanged
 nix-switch --no-brew    # macOS: skip it for one switch
@@ -56,6 +58,13 @@ the Brewfile, so most switches skip it. That gate is the reason `--brew` exists:
 a version bump inside a `jrolfs/tap` cask does not change the Brewfile.
 
 On Linux hosts `nix-switch` wraps `nixos-rebuild` instead.
+
+Worktrees of this repo live in `~/.config/.system/<branch>`, set by the
+`worktree-path` entry in `dotfiles/home/.config/worktrunk/config.toml`. Run from
+inside one, a bare `nix-switch` switches that worktree's flake and says so, and
+the next switch from the main checkout puts main back. Not nested under the
+checkout because Claude Code loads `CLAUDE.md` from every parent directory, so
+a nested worktree session would also load main's copy.
 
 ## Layout
 
