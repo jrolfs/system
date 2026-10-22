@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "nixos": {
-      "type": "stdio",
-      "command": "/run/current-system/sw/bin/mcp-nixos"
-    }
-  }
-}

@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 
 # MCP servers available in every session on every machine, declared once in
 # programs.mcp.servers and handed to each harness through home-manager's own
@@ -28,6 +28,10 @@
     enable = true;
     servers = {
       linear.url = "https://mcp.linear.app/mcp";
+
+      # By store path rather than from PATH, so the server is the one this
+      # generation built and nothing else has to install it.
+      nixos.command = "${pkgs.mcp-nixos}/bin/mcp-nixos";
     };
   };
 

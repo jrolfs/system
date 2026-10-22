@@ -122,7 +122,5 @@
     pkgs.opencode
     pkgs.opencode-claude-auth
 
-    pkgs.mcp-nixos
-
   ];
 }
