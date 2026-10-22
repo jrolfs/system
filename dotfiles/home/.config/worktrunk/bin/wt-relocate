@@ -41,27 +41,59 @@ claude_code() {
 }
 
 # A `wt handoff` snapshot is named after the worktree's directory and records its
-# path, which is where `wt restore` recreates it, so after a move the old one
-# would bring the worktree back at the old path. The path is part of the
-# snapshot's commit, so it can only be deleted, not updated. Only a snapshot
-# recorded at exactly the old path is touched, and on origin only the commit
-# inspected here, so a newer handoff pushed in the meantime survives. The commit
-# stays in the object store, and the message says how to put the ref back.
+# path, which is where `wt restore` recreates it, so left alone it would bring
+# the worktree back at the old path. The path is in the snapshot's commit, so
+# the snapshot is replaced by a copy recorded at the new path and filed under
+# the new name: same files, same author and date, and still marked as the host
+# it came from. Its parents are the original's first parent, which restore
+# checks out, and the original snapshot itself, so nothing becomes unreachable
+# and the next handoff from the new path extends the same chain.
+#
+# Only a snapshot recorded at exactly the old path is touched. On origin the
+# rename is one atomic push that creates the new name only if it is free and
+# removes the old one only if it is still the commit seen here, so a handoff
+# pushed from elsewhere in the meantime is never overwritten.
 handoff_snapshot() {
-  local ref commit host on_origin=no
-  ref=refs/wip/$(snapshot_name "$1")
-  git fetch --quiet origin "+$ref:$ref" 2>/dev/null && on_origin=yes
-  commit=$(git rev-parse --verify --quiet "$ref") || return 0
-  [ "$(trailer Wt-Path "$ref")" = "$1" ] || return 0
-  host=$(trailer Wt-Host "$ref")
+  local old_ref new_ref commit copy on_origin=no
+  old_ref=refs/wip/$(snapshot_name "$1")
+  new_ref=refs/wip/$(snapshot_name "$2")
+  git fetch --quiet origin "+$old_ref:$old_ref" 2>/dev/null && on_origin=yes
+  commit=$(git rev-parse --verify --quiet "$old_ref") || return 0
+  [ "$(trailer Wt-Path "$old_ref")" = "$1" ] || return 0
+
+  if [ "$new_ref" != "$old_ref" ] && git rev-parse --verify --quiet "$new_ref" >/dev/null; then
+    echo "Left handoff snapshot ${old_ref#refs/wip/} restoring to $1: ${new_ref#refs/wip/} already exists" >&2
+    return 0
+  fi
+
+  copy=$(git log -1 --format=%B "$commit" \
+    | sed "1s|.*|wip: ${new_ref#refs/wip/}|" \
+    | git interpret-trailers --if-exists replace --trailer "Wt-Path: $2" \
+    | GIT_AUTHOR_NAME=$(git log -1 --format=%an "$commit") \
+      GIT_AUTHOR_EMAIL=$(git log -1 --format=%ae "$commit") \
+      GIT_AUTHOR_DATE=$(git log -1 --format=%aI "$commit") \
+      GIT_COMMITTER_NAME=$(git log -1 --format=%cn "$commit") \
+      GIT_COMMITTER_EMAIL=$(git log -1 --format=%ce "$commit") \
+      GIT_COMMITTER_DATE=$(git log -1 --format=%cI "$commit") \
+      git commit-tree "$commit^{tree}" -p "$commit^" -p "$commit" -F -)
 
   if [ $on_origin = yes ]; then
-    git push --quiet --force-with-lease="$ref:$commit" origin ":$ref" || return 1
+    if [ "$new_ref" = "$old_ref" ]; then
+      git push --quiet --force-with-lease="$old_ref:$commit" origin "$copy:$old_ref" || return 1
+    else
+      git push --quiet --atomic \
+        --force-with-lease="$new_ref:" --force-with-lease="$old_ref:$commit" \
+        origin "$copy:$new_ref" ":$old_ref" || return 1
+    fi
   fi
-  git update-ref -d "$ref" "$commit"
 
-  echo "Deleted handoff snapshot ${ref#refs/wip/} from ${host:-an unknown host}, which would restore to $1."
-  echo "  wt handoff again to publish it from $2. To undo: git update-ref $ref $commit && git push origin $ref"
+  if [ "$new_ref" = "$old_ref" ]; then
+    git update-ref "$new_ref" "$copy" "$commit"
+  else
+    git update-ref "$new_ref" "$copy" ""
+    git update-ref -d "$old_ref" "$commit"
+  fi
+  echo "Moved handoff snapshot ${old_ref#refs/wip/} to ${new_ref#refs/wip/}, so it restores to $2"
 }
 
 # Mirrors wt-handoff's key_for: the directory name, with the parent folded in
