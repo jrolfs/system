@@ -4,7 +4,7 @@
 # darwinConfiguration via home-manager.sharedModules in flake.nix.
 
 let
-  dotfiles = ../../dotfiles/home;
+  dotfiles = ../../../dotfiles/home;
 
   configDirectory = "${config.home.homeDirectory}/.config/system";
 
@@ -66,9 +66,9 @@ let
 in
 {
   imports = [
-    ./atuin.nix
+    ../shared/atuin.nix
     ./browsers.nix
-    ./claude-sync.nix
+    ../shared/claude-sync.nix
     ./icloud.nix
     ./raycast.nix
     ./wallpaper.nix

@@ -19,8 +19,8 @@
 #   ⌘1-9 outside kitty has become Alt+1-9, so ⌘⇧3 arrives as ALT + SHIFT + 3
 
 let
-  palette = (import ../../theme/palette.nix).dark.soft;
-  fonts = import ../../theme/fonts.nix;
+  palette = (import ../../../theme/palette.nix).dark.soft;
+  fonts = import ../../../theme/fonts.nix;
 
   # Hyprland wants colours as rgb(rrggbb) or rgba(rrggbbaa).
   rgb = hex: "rgb(${lib.removePrefix "#" hex})";

@@ -9,9 +9,7 @@ in
 
   imports = [
 
-    ../bootstrap.nix
-    ../home-backup.nix
-    ../packages.nix
+    ../shared
 
     ./accessibility.nix
     ./daemons.nix

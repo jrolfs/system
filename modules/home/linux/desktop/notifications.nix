@@ -3,8 +3,8 @@
 # Notifications, drawn by mako in the top right, under the bar.
 
 let
-  palette = (import ../../theme/palette.nix).dark.soft;
-  fonts = import ../../theme/fonts.nix;
+  palette = (import ../../../theme/palette.nix).dark.soft;
+  fonts = import ../../../theme/fonts.nix;
 
   rounding = 10;
   opacity = "e6";

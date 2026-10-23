@@ -9,8 +9,8 @@
 # the keyboard.
 
 let
-  palette = (import ../../theme/palette.nix).dark.soft;
-  fonts = import ../../theme/fonts.nix;
+  palette = (import ../../../theme/palette.nix).dark.soft;
+  fonts = import ../../../theme/fonts.nix;
 
   rgb = hex: "rgb(${lib.removePrefix "#" hex})";
 

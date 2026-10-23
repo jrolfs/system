@@ -8,8 +8,8 @@
 # opacity here is what sets how much of the desktop shows through.
 
 let
-  palette = (import ../../theme/palette.nix).dark.soft;
-  fonts = import ../../theme/fonts.nix;
+  palette = (import ../../../theme/palette.nix).dark.soft;
+  fonts = import ../../../theme/fonts.nix;
 
   rounding = 10;
   # More opaque than the bar: the launcher is read closely and the bar only

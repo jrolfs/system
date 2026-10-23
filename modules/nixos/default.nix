@@ -8,9 +8,7 @@ let
 in
 {
   imports = [
-    ../bootstrap.nix
-    ../home-backup.nix
-    ../packages.nix
+    ../shared
     ./keyboard
     ./onepassword-secrets.nix
     ./sudo.nix
