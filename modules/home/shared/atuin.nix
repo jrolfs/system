@@ -11,13 +11,9 @@
 # process listing. Non-interactively a wrong key is a logout-and-fail, not a
 # retry prompt, so a bad value can't wedge the switch.
 #
-# op is the Homebrew CLI (1password-cli cask) at its absolute path, not
-# pkgs._1password-cli: desktop-app integration (Touch ID authorization) is
-# granted to that binary. On the first run op pops an authorization prompt —
-# the timeouts are generous enough to reach for it, and a switch run with
-# 1Password locked or signed out degrades to a warning. Linux hosts will want
-# a service account scoped to the Secrets vault instead; this module is only
-# imported on Darwin.
+# The reads go through onepassword.nix, which authorizes through the desktop
+# app on the Macs and a service account on Linux. Either way a switch that
+# can't reach 1Password degrades to a warning.
 
 let
   item = "op://Secrets/Atuin";
@@ -40,7 +36,7 @@ let
     # runs without.
     atuin status >/dev/null 2>&1 && exit 0
 
-    op() { timeout 120 /opt/homebrew/bin/op --account rolfers.1password.com "$@"; }
+    op() { ${config.onepassword.op} "$@"; }
 
     username=$(op read '${item}/username') || exit 1
     password=$(op read '${item}/password') || exit 1
@@ -53,6 +49,6 @@ in
   home.activation.atuinLogin = lib.hm.dag.entryAfter [ "writeBoundary" ] # bash
     ''
       run ${login} \
-        || warnEcho "atuin: not logged in — unlock 1Password and rerun, or run 'atuin login' by hand"
+        || warnEcho "atuin: not logged in — make sure op can reach 1Password (unlocked app on macOS, service account token on Linux) and rerun, or run 'atuin login' by hand"
     '';
 }
