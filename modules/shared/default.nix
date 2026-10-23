@@ -6,6 +6,7 @@
   imports = [
     ./bootstrap.nix
     ./home-backup.nix
+    ./nix.nix
     ./packages.nix
   ];
 }
