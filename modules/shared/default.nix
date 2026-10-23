@@ -8,5 +8,6 @@
     ./home-backup.nix
     ./nix.nix
     ./packages.nix
+    ./ssh.nix
   ];
 }
