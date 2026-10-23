@@ -149,11 +149,17 @@ for top in "${selected[@]}"; do
     parents+=(-p "$previous")
   fi
 
+  # Home-relative, because home is /Users/<you> on the Macs and /home/<you> on
+  # Linux, and an absolute path restores to a directory the other platform
+  # can't create. wt-restore and wt-relocate resolve it against their own home.
+  recorded=$top
+  case $top in "$HOME"/*) recorded="~/${top#"$HOME"/}" ;; esac
+
   # One -m per paragraph, and git only parses the final paragraph as trailers,
   # so all three must share it.
   commit=$(git -C "$top" commit-tree "$tree" "${parents[@]}" \
     -m "wip: $dir" \
-    -m "Wt-Path: $top
+    -m "Wt-Path: $recorded
 Wt-Branch: $branch
 Wt-Host: $(hostname -s)")
 

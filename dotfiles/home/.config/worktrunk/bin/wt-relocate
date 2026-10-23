@@ -49,8 +49,10 @@ claude_code() {
 # path, which is where `wt restore` recreates it. One recorded at a path its
 # worktree has moved away from would bring the worktree back there, so it is
 # matched up with the worktree by branch: a snapshot of a branch checked out
-# here, recorded at a path under this home that no longer exists. Paths outside
-# this home are another machine's layout (irulan's /home) and are left alone.
+# here, recorded at a path under this home that no longer exists. Recorded
+# paths are resolved against this machine's home first, so a snapshot handed
+# off from the other platform is judged by where it would restore here. This
+# runs after the move, so worktrees are already where the template puts them.
 snapshots() {
   local mode=$1 remote table branch path ref recorded_branch recorded on_origin target
 
@@ -65,6 +67,7 @@ snapshots() {
 
   while IFS=$'\t' read -r branch path; do
     while IFS=$'\t' read -r ref recorded_branch recorded; do
+      recorded=$(local_path "$recorded")
       [ "$recorded_branch" = "$branch" ] && [ "$recorded" != "$path" ] || continue
       case $recorded in "$HOME"/*) ;; *) continue ;; esac
       [ ! -e "$recorded" ] || continue
@@ -112,7 +115,7 @@ move_snapshot() {
 
   copy=$(git log -1 --format=%B "$commit" \
     | sed "1s|.*|wip: ${new_ref#refs/wip/}|" \
-    | git interpret-trailers --if-exists replace --trailer "Wt-Path: $new_path" \
+    | git interpret-trailers --if-exists replace --trailer "Wt-Path: $(home_path "$new_path")" \
     | GIT_AUTHOR_NAME=$(git log -1 --format=%an "$commit") \
       GIT_AUTHOR_EMAIL=$(git log -1 --format=%ae "$commit") \
       GIT_AUTHOR_DATE=$(git log -1 --format=%aI "$commit") \
@@ -138,6 +141,26 @@ move_snapshot() {
     git update-ref -d "$old_ref" "$commit"
   fi
   echo "Moved handoff snapshot ${old_ref#refs/wip/} to ${new_ref#refs/wip/}, so it restores to $new_path"
+}
+
+# Recorded paths are home-relative (`~/…`), since home differs by platform. Ones
+# written before that are absolute under the handing-off machine's home, and
+# map onto this one when the user name matches. Mirrored in wt-restore, and
+# home_path mirrors how wt-handoff records one.
+local_path() {
+  local user=${USER:-$(id -un)}
+  case $1 in
+    "~/"*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
+    /Users/"$user"/* | /home/"$user"/*) printf '%s/%s' "$HOME" "${1#/*/*/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+home_path() {
+  case $1 in
+    "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
 }
 
 # Mirrors wt-handoff's key_for: the directory name, with the parent folded in

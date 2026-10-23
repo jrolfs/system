@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Recreate worktrees pushed by wt-handoff: same absolute path, same branch,
-# dirty state overlaid, and claude-sync pulled before any of it so each path's
-# Claude sessions are resumable the moment the tree exists. Run from anywhere
-# inside the repository (main checkout or any worktree).
+# Recreate worktrees pushed by wt-handoff: same path under this machine's home,
+# same branch, dirty state overlaid, and claude-sync pulled before any of it so
+# each path's Claude sessions are resumable the moment the tree exists. Run from
+# anywhere inside the repository (main checkout or any worktree).
+#
+# Home differs by platform (/Users/<you> on the Macs, /home/<you> on Linux), so
+# a path is resolved against this one. claude-sync only runs on the Macs, so a
+# worktree restored on Linux arrives without its Claude threads.
 #
 # Patterns match the snapshot name, and --all takes every snapshot another host
 # pushed, so arriving on a new machine is one command rather than one per
@@ -46,6 +50,18 @@ main_dir=$(basename "$(git worktree list --porcelain | sed -n 's/^worktree //p' 
 
 trailer() {
   git log -1 --format="%(trailers:key=$1,valueonly=true)" "refs/wip/$2" | head -1
+}
+
+# wt-handoff records `~/…`. Snapshots from before it did carry an absolute path
+# under the handing-off machine's home, which is mapped onto this one when the
+# user name matches. Mirrored in wt-relocate's local_path.
+local_path() {
+  local user=${USER:-$(id -un)}
+  case $1 in
+    "~/"*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
+    /Users/"$user"/* | /home/"$user"/*) printf '%s/%s' "$HOME" "${1#/*/*/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
 }
 
 # The snapshot names are only known after the fetch, so take every ref and pick
@@ -98,7 +114,7 @@ restore_one() {
   local wip path branch from parent current
 
   wip=$(git rev-parse "refs/wip/$name")
-  path=$(trailer Wt-Path "$name")
+  path=$(local_path "$(trailer Wt-Path "$name")")
   branch=$(trailer Wt-Branch "$name")
   from=$(trailer Wt-Host "$name")
   parent=$(git rev-parse "$wip^")
