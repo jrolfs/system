@@ -66,9 +66,7 @@ let
 in
 {
   imports = [
-    ../shared/atuin.nix
     ./browsers.nix
-    ../shared/claude-sync.nix
     ./icloud.nix
     ./raycast.nix
     ./wallpaper.nix

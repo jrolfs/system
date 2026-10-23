@@ -31,7 +31,7 @@ let
 
     [ -e ${configDirectory}/config.yaml ] && [ -e ${configDirectory}/age-key.txt ] && exit 0
 
-    op() { timeout 120 /opt/homebrew/bin/op --account rolfers.1password.com "$@"; }
+    op() { ${config.onepassword.op} "$@"; }
 
     mkdir -p ${configDirectory}
     chmod 700 ${configDirectory}
@@ -73,6 +73,6 @@ in
   home.activation.claudeSync = lib.hm.dag.entryAfter [ "writeBoundary" ] # bash
     ''
       run ${setup} \
-        || warnEcho "claude-sync: not configured — fill in the 1Password item (Secrets → Claude Sync), unlock 1Password, and rerun"
+        || warnEcho "claude-sync: not configured — fill in the 1Password item (Secrets → Claude Sync), make sure op can reach it (unlocked app on macOS, service account token on Linux), and rerun"
     '';
 }
