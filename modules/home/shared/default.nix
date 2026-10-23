@@ -1,8 +1,8 @@
 { pkgs, lib, hostname, userName, config, inputs, ... }:
 
 let
-  dotfiles = ../../dotfiles/home;
-  repoRoot = ../..;
+  dotfiles = ../../../dotfiles/home;
+  repoRoot = ../../..;
 
   # The working tree as it exists on the machine, as opposed to the store copy
   # of it that `dotfiles` refers to.

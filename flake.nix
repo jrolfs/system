@@ -124,8 +124,8 @@
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.extraSpecialArgs = { inherit inputs hostname userName; };
-            home-manager.users.${userName} = import ./modules/home;
-            home-manager.sharedModules = [ ./modules/home/darwin.nix ];
+            home-manager.users.${userName} = import ./modules/home/shared;
+            home-manager.sharedModules = [ ./modules/home/darwin ];
           }
         ];
       };
@@ -144,8 +144,8 @@
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.extraSpecialArgs = { inherit inputs hostname userName; };
-            home-manager.users.${userName} = import ./modules/home;
-            home-manager.sharedModules = [ ./modules/home/linux.nix ];
+            home-manager.users.${userName} = import ./modules/home/shared;
+            home-manager.sharedModules = [ ./modules/home/linux ];
           }
         ];
       };

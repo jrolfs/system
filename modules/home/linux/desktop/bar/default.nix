@@ -8,8 +8,8 @@
 # so the QML never names a colour or a typeface itself.
 
 let
-  palette = (import ../../../theme/palette.nix).dark.soft;
-  fonts = import ../../../theme/fonts.nix;
+  palette = (import ../../../../theme/palette.nix).dark.soft;
+  fonts = import ../../../../theme/fonts.nix;
 
   look = {
     height = 34;
