@@ -5,9 +5,10 @@
 #
 # The credential helper stays off. dotfiles/home/.config/git/config already
 # routes github.com through `gh auth git-credential`, by the absolute path
-# /run/current-system/sw/bin/gh, which is why gh also stays in the system
-# packages (modules/shared/packages.nix) even though this installs it too.
-# Same store path, so the two copies are one.
+# /etc/profiles/per-user/jamie/bin/gh: an absolute path because git run from a
+# GUI app may not have this profile on PATH, and this one because
+# home-manager.useUserPackages puts what this module installs there on both
+# platforms.
 {
   programs.gh = {
     enable = true;

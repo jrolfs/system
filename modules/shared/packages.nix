@@ -73,7 +73,6 @@
     # Git
 
     pkgs.delta
-    pkgs.gh
     pkgs.git
     pkgs.git-crypt
     pkgs.git-lfs
