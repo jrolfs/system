@@ -30,7 +30,6 @@
     pkgs.ripgrep
     pkgs.sd
     pkgs.skim
-    pkgs.starship
     pkgs.tealdeer
     pkgs.tmux
     pkgs.yq

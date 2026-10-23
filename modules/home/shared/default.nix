@@ -48,7 +48,7 @@ let
     (builtins.readDir "${dotfiles}/.local/share/gh/extensions");
 in
 {
-  imports = [ ./eza.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./ssh.nix ]
+  imports = [ ./eza.nix ./gh.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./ssh.nix ./starship.nix ]
     ++ lib.optional (builtins.pathExists ./hosts/${hostname}.nix) ./hosts/${hostname}.nix;
 
   home.username = userName;
@@ -294,7 +294,6 @@ in
       recursive = true;
     };
     "starship".source = "${dotfiles}/.config/starship";
-    "starship.toml".source = "${dotfiles}/.config/starship.toml";
 
     # zed writes back into its config dir (settings.json, keymap.json
     # change from the UI) — mkOutOfStoreSymlink points at the real
