@@ -118,7 +118,7 @@ it was ported after that file was written, and the flake copy is ahead of
 Elsewhere: `homebrew` (7/23), `nix` (5/37), `networking` +
 `networking.applicationFirewall` (7/16), `programs.zsh` (3/17),
 `services.postgresql`, `power.sleep`, `programs.ssh`, `security.pam`,
-`services.openssh`, `services.skhd`, `system.activationScripts`,
+`services.openssh`, `system.activationScripts`,
 `environment.etc`, `system.startup`, `system.stateVersion`,
 `system.primaryUser`, `launchd.user.agents`, `environment.systemPackages`,
 `nixpkgs`, `time.timeZone`, `users.users`.
@@ -175,7 +175,7 @@ declines them; this is the index.
   `ala`; `newt` did need it.
 - **Tiling and bar services** (`yabai`, `aerospace`, `jankyborders`,
   `sketchybar`, `spacebar`, `chunkwm`, `khd`, `kwm`): not the window management
-  in use. Moom and Stay are, and `services.skhd` is explicitly `enable = false`.
+  in use. Moom and Stay are.
 
 ## Not applicable
 
