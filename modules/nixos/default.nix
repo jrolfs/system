@@ -3,9 +3,6 @@
 # Shared NixOS configuration. Imported by every nixosConfiguration via
 # flake.nix's mkNixos. Host-specific bits live in hosts/<hostname>/.
 
-let
-  overlays = import ../../overlays inputs;
-in
 {
   imports = [
     ../shared
@@ -14,34 +11,16 @@ in
     ./sudo.nix
   ];
 
-  # Same overlay the darwin side applies. Not darwin-specific: modules/home is
-  # shared by both platforms and reaches for overlay packages unconditionally
-  # (claude-helpers, zshcs), so without this a NixOS host doesn't evaluate at
-  # all. Packages in it that only make sense on macOS are lazy — nothing builds
-  # unless something references it.
-  nixpkgs.overlays = [ overlays ];
-
   system.stateVersion = "24.05";
 
-  # Nix daemon settings — keep parity with the darwin module so
-  # `nix shell nixpkgs#foo` and `nix-shell -p foo` resolve the same way
-  # across mac and linux hosts.
+  # The settings both platforms share are in ../shared/nix.nix.
   nix.package = pkgs.lix;
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nix.settings.auto-optimise-store = true;
   nix.gc = {
     automatic = true;
     dates = "weekly";
     options = "--delete-older-than 14d";
   };
-
-  nix.registry.nixpkgs.flake = inputs.nixpkgs;
-  nix.nixPath = [
-    "nixpkgs=${inputs.nixpkgs}"
-  ];
-
-  nixpkgs.config.allowUnfree = true;
-  nixpkgs.config.allowBroken = true;
 
   # Default user shell across NixOS hosts. Matches the darwin side so
   # the lifted-and-shifted .zshrc / .zshenv work without a chsh dance.

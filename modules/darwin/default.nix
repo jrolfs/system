@@ -1,9 +1,5 @@
 { pkgs, lib, inputs, userName, ... }:
 
-let
-  overlays = import ../../overlays inputs;
-
-in
 {
   users.users.${userName}.home = "/Users/${userName}";
 
@@ -90,14 +86,6 @@ in
       fi
     '';
 
-  nixpkgs.config = {
-    allowBroken = true;
-    allowUnfree = true;
-    allowUnsupportedSystem = true;
-  };
-
-  nixpkgs.overlays = [ overlays ];
-
   system.stateVersion = 5;
 
   services.postgresql = {
@@ -115,16 +103,20 @@ in
   nix.package = pkgs.lixPackageSets.lix_2_94.lix;
   nix.enable = true;
 
-  nix.extraOptions = "experimental-features = nix-command flakes";
-
-  # Flake-based registry pin. Makes `nix shell nixpkgs#foo` and
-  # `nix-shell -p foo` both resolve to the flake-pinned nixpkgs.
-  nix.registry.nixpkgs.flake = inputs.nixpkgs;
+  # The nixpkgs entries are in ../shared/nix.nix; nix-darwin is the extra here.
   nix.registry.nix-darwin.flake = inputs.nix-darwin;
-  nix.nixPath = [
-    "nixpkgs=${inputs.nixpkgs}"
-    "nix-darwin=${inputs.nix-darwin}"
-  ];
+  nix.nixPath = [ "nix-darwin=${inputs.nix-darwin}" ];
+
+  # Same schedule and retention as the NixOS hosts, in nix-darwin's spelling:
+  # a launchd interval rather than a systemd calendar, and nix.optimise rather
+  # than auto-optimise-store, which nix-darwin advises against because it
+  # hard-links during every build on APFS.
+  nix.gc = {
+    automatic = true;
+    interval = { Weekday = 0; Hour = 3; Minute = 15; };
+    options = "--delete-older-than 14d";
+  };
+  nix.optimise.automatic = true;
 
   programs.ssh.knownHosts = {
     "github.com/rsa" = {
