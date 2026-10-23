@@ -9,8 +9,8 @@
 # line across yet, and the two drifted every time either changed.
 #
 # What stays out: anything that only means something on one platform (see the
-# lists in modules/darwin and modules/nixos), and anything heavy enough that a
-# host should opt into it rather than receive it by default.
+# lists in modules/darwin and modules/nixos). Size is not a reason to leave
+# something out; every machine here is a workstation of some kind.
 
 {
   environment.systemPackages = [
@@ -41,6 +41,13 @@
 
     pkgs.rclone
     pkgs.wakeonlan
+
+    #
+    # Infrastructure
+
+    pkgs.azure-cli
+    pkgs.kubectl
+    pkgs.kubectx
 
     #
     # Build
@@ -106,10 +113,12 @@
     # Editors
 
     pkgs.neovim
+    pkgs.neovide
     pkgs.nil
     pkgs.tree-sitter
 
     # Nix
+    pkgs.devenv
     pkgs.nixpkgs-fmt
 
     #

@@ -62,29 +62,13 @@ in
     pkgs.pinentry_mac
 
     #
-    # Infrastructure
-    #
-    # Work tooling. Shareable in principle — azure-cli alone is most of a
-    # gigabyte, so a host opts in rather than inheriting it.
-
-    pkgs.azure-cli
-    pkgs.kubectl
-    pkgs.kubectx
-
-    #
-    # Editors
-
-    # A GUI neovim, so it wants a graphical session to be worth installing.
-    pkgs.neovide
-
-    #
     # Nix
 
-    # devbox is on the way out (it's why nix.package is pinned to Lix 2.94),
-    # and nothing uses devenv yet — neither belongs in a shared baseline while
-    # that's true.
+    # Not macOS-specific, but it is why nix.package is pinned to Lix 2.94
+    # below, and irulan already runs 2.95. Pinning there too would downgrade a
+    # daemon that has been running against that store, for a tool on its way
+    # out in favour of devenv, which is shared.
     pkgs.devbox
-    pkgs.devenv
 
   ];
 
