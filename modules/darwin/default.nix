@@ -92,7 +92,6 @@
     enable = false;
     enableTCPIP = true;
   };
-  services.skhd.enable = false;
 
   security.pam.services.sudo_local.touchIdAuth = true;
 
