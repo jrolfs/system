@@ -39,6 +39,7 @@
         "workspace::MoveItemToPaneInDirection",
         { "direction": "down" },
       ],
+      "ctrl-w shift-m": "pane::JoinAll"
     },
   },
 
