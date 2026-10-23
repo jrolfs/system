@@ -49,3 +49,14 @@ fixture = "https://localhost:3002"
 id = "BE098F04-F1C1-4F21-A692-C31CCABB7ACC"
 kind = "hostSuffix"
 pattern = "localhost"
+
+[[rules]]
+id = "845D6F10-6959-4F5C-9D32-C9B2EC82289D"
+openTarget = "defaultBrowser"
+title = "Meter / Vercel / Previews"
+
+[[rules.matchers]]
+fixture = "dashboard-git-greg-dash-10628-heatmap-stroke-and-light-fill.preview.meter.dev/org/meter/home"
+id = "7C54B90E-4F44-4A4D-854E-510C2110B2D2"
+kind = "hostSuffix"
+pattern = "preview.meter.dev"
