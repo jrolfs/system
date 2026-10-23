@@ -40,7 +40,7 @@ in
 
   # Packages
   #
-  # The cross-platform ones live in ../packages.nix, imported above. What's
+  # The cross-platform ones live in ../shared/packages.nix, imported above. What's
   # left is either macOS-only, or not yet wanted on a host that isn't a
   # workstation.
 

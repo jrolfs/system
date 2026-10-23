@@ -6,7 +6,7 @@
 #
 # An option rather than an import that does everything, so a host can carry
 # this whole tree and still be headless, and so the home-manager side
-# (modules/home/desktop) can read `osConfig.desktop.enable` and stay out of
+# (modules/home/linux/desktop) can read `osConfig.desktop.enable` and stay out of
 # the way on a server.
 
 {

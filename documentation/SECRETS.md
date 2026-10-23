@@ -197,7 +197,7 @@ nix develop -c bootstrap secrets gpg export          # from a clone; required fo
                                                      # read-only)
 ```
 
-Plus, once wired, on `PATH` via the system flake — see `modules/bootstrap.nix`:
+Plus, once wired, on `PATH` via the system flake — see `modules/shared/bootstrap.nix`:
 
 ```nix
 inputs.bootstrap.url = "github:jrolfs/bootstrap";
@@ -312,7 +312,7 @@ them.
 - **Done:** the `bootstrap secrets` CLI (`list`, `check`, `materialize`, `add`,
   `gpg export`, `gpg import`), the zod-validated `secrets.json` manifest with
   per-entry `hosts` gating, and one `bootstrap` binary exposed as both a flake
-  package (`modules/bootstrap.nix` puts it on `PATH`) and an app.
+  package (`modules/shared/bootstrap.nix` puts it on `PATH`) and an app.
 - **Done:** `gpg-imported` bootstrap phase, now iterating `gpg.keyrings` and
   skipping keyrings gated to other hosts. Key material is piped straight into
   `gpg --batch --import` on stdin — never a temp file, never in argv.

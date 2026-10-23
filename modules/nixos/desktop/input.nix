@@ -27,7 +27,7 @@ lib.mkIf config.desktop.enable {
   '';
 
   # The trackpad is a libinput device. Its gestures and scroll direction are
-  # Hyprland settings (modules/home/desktop/hyprland.nix), since Hyprland
+  # Hyprland settings (modules/home/linux/desktop/hyprland.nix), since Hyprland
   # reads libinput itself rather than through X.
   services.libinput.enable = true;
 }

@@ -50,7 +50,7 @@
   programs.claude-code = {
     enable = true;
 
-    # Installed system-wide by modules/packages.nix. Null also tells the module
+    # Installed system-wide by modules/shared/packages.nix. Null also tells the module
     # to assume a current Claude Code, so it takes the personal-plugin route
     # rather than wrapping the binary in `--plugin-dir`.
     package = null;

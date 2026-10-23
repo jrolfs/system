@@ -39,13 +39,13 @@ owning the dotfiles.
   and the desktop's own icon-view options as a
   `CustomUserPreferences."com.apple.finder".DesktopViewSettings` dictionary —
   nix-darwin has no structured option for that one because it's a nested dict,
-  not a flat key. The picture itself is `modules/home/wallpaper.nix`, because it
+  not a flat key. The picture itself is `modules/home/darwin/wallpaper.nix`, because it
   isn't a preference at all: see the gotcha below.
 - **`private`** stays a homeshick castle (git-crypt). `$HOMESHICK_KINGDOM` is
   still exported so `OP_CONFIG_DIR` etc. resolve. bootstrap clones, links,
   pulls *and* — since `castle-unlocked` — unlocks it; before that phase existed
   a provisioned machine got the castle as ciphertext, `keys.zsh` included. Two
-  places in `modules/home/default.nix` exist for it: `liveConfig "zsh"` and
+  places in `modules/home/shared/default.nix` exist for it: `liveConfig "zsh"` and
   `git` with `recursive = true`, both so homeshick can plant a file inside a
   directory home-manager also manages.
 - **Submodules dropped.** nix-darwin / nixpkgs are flake inputs pinned to
@@ -110,7 +110,7 @@ MIGRATION.md
   `NSWorkspace.setDesktopImageURL`, so the work lives in Hammerspoon, which is
   where this config keeps the macOS APIs that have no declarative surface:
   `dotfiles/home/.hammerspoon/modules/wallpaper.lua` does it through
-  `hs.screen:desktopImageURL`, and `modules/home/wallpaper.nix` declares the
+  `hs.screen:desktopImageURL`, and `modules/home/darwin/wallpaper.nix` declares the
   path and calls into it from activation. Four consequences worth knowing:
   - It reaches the **active space only**, and the other spaces are reached *on
     arrival*, not by a switch going and getting them. System Settings writes an

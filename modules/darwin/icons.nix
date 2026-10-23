@@ -5,7 +5,7 @@ let
   # The asset tree is read out of the deployed configuration rather than
   # ~/.local/share/icons, which is where homeshick used to put it — and only
   # ever as a symlink chain that ended in this same repo. Nothing else refers to
-  # that path (the `icn` alias in modules/home/darwin.nix already points here),
+  # that path (the `icn` alias in modules/home/darwin/default.nix already points here),
   # and depending on it meant depending on a link that no longer gets created,
   # so fd had no search path and every run was a no-op.
   #

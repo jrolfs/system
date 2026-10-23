@@ -177,7 +177,7 @@ in
     # are two halves of one store now — Desktop and Idle under the same scope in
     # com.apple.wallpaper — and WallpaperAgent owns it, so the module choice
     # (Drift, here) is no more declarable than the wallpaper was; see
-    # modules/home/wallpaper.nix, which reaches the wallpaper half through
+    # modules/home/darwin/wallpaper.nix, which reaches the wallpaper half through
     # NSWorkspace because that is the only public way in. The legacy
     # com.apple.screensaver keys still exist and are still populated, but they
     # are a mirror the store writes to rather than the thing being read, and

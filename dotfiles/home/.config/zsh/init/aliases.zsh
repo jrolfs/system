@@ -23,7 +23,7 @@ if command -v bat >&/dev/null 2>&1; then
   alias cat=bat
 fi
 
-# eza-ls (modules/home/eza.nix) runs the system ls for anything it can't
+# eza-ls (modules/home/shared/eza.nix) runs the system ls for anything it can't
 # translate, and for any ls whose output isn't a terminal. `\ls` skips it.
 if command -v eza-ls >&/dev/null 2>&1; then
   alias ls=eza-ls

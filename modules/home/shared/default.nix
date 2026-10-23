@@ -75,7 +75,7 @@ in
   };
 
   # Top-level shell dotfiles. The .zshrc still has its
-  # `source ~/.zshrc.<platform>` lookup; modules/home/darwin.nix provides
+  # `source ~/.zshrc.<platform>` lookup; modules/home/darwin/default.nix provides
   # ~/.zshrc.darwin so that path resolves on macOS, nothing on linux.
   home.file = {
     ".zshenv".source = "${dotfiles}/.zshenv";

@@ -29,7 +29,7 @@ was unlocked. The init files are now sourced directly (commit `2ddaf7d`).
 
 Keep `.zshrc` hand-written. Replace the zinit block with a Nix-generated
 `~/.config/zsh/plugins.zsh` that `.zshrc` sources, following the precedent of
-`modules/home/nix-commands.nix`, which generates `~/.config/zsh/init/nix.zsh`.
+`modules/home/shared/nix-commands.nix`, which generates `~/.config/zsh/init/nix.zsh`.
 The generated file sources store paths directly, so there is no fetching and
 nothing to cache.
 

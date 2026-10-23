@@ -208,7 +208,7 @@ rather than adopted.
    use extra substituters and accept `nix copy` pushes. It also means any admin
    user can point the daemon at a cache, which is the trade.
 3. **`security.pam.services.sudo_local.reattach`.** `touchIdAuth` is on, and
-   `pkgs.tmux` is in `modules/packages.nix`. Touch ID for sudo does not work
+   `pkgs.tmux` is in `modules/shared/packages.nix`. Touch ID for sudo does not work
    inside a tmux or screen session without `pam_reattach`, so this is the
    missing half of a setting already made.
 4. **`security.pam.services.sudo_local.watchIdAuth`.** Same file, Apple Watch

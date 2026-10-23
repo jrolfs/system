@@ -4,7 +4,7 @@
 
 lib.mkIf config.desktop.enable {
   # uwsm runs Hyprland as a systemd user unit and starts graphical-session.target
-  # around it, which is what every user service in modules/home/desktop hangs
+  # around it, which is what every user service in modules/home/linux/desktop hangs
   # off. Without it those units would need their own way of learning that
   # Hyprland is up, and of stopping when it isn't.
   programs.hyprland = {
