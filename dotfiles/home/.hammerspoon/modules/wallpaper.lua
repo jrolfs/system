@@ -14,7 +14,7 @@
 -- typing. So M.apply paints the space you are on and arms a watcher, and the
 -- rest are corrected as you arrive at them, invisibly.
 --
--- Driven from home-manager activation (modules/home/wallpaper.nix), which is
+-- Driven from home-manager activation (modules/home/darwin/wallpaper.nix), which is
 -- where the path is declared.
 
 local M = {}

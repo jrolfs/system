@@ -8,7 +8,7 @@ function gpgp { echo $1 | gpg-preset-passphrase --preset 91C155A78968EEE863ED8B2
 # fine anywhere else.
 export GPG_TTY=$TTY
 
-# Tell the pinentry dispatcher (modules/home/darwin.nix) that this session has
+# Tell the pinentry dispatcher (modules/home/darwin/default.nix) that this session has
 # a terminal, so it may honour the toggle below. gpg forwards this to the agent
 # per invocation, which is the only channel available — by the time pinentry is
 # exec'd it has no tty of its own to look at, and the client's real one is sent
@@ -45,7 +45,7 @@ add-zsh-hook preexec _gpg-agent-update-tty
 # Toggle between the macOS GUI pinentry and the curses one.
 #
 # gpg-agent execs pinentry-program fresh for every prompt, and what it execs
-# is a dispatcher (see modules/home/darwin.nix) that reads this state file. So
+# is a dispatcher (see modules/home/darwin/default.nix) that reads this state file. So
 # flipping the file takes effect on the very next prompt with no agent reload,
 # and gpg-agent.conf stays declarative instead of being rewritten in place —
 # which it cannot be anyway, now that it is a read-only store symlink.

@@ -201,7 +201,7 @@ in
 
   # The two gnupg files that are macOS-specific: the pinentry choice only
   # arises here, and scdaemon is about a smartcard reader. gpg.conf is shared,
-  # in modules/home/default.nix. Declared per file rather than as a directory so
+  # in modules/home/shared/default.nix. Declared per file rather than as a directory so
   # that ~/.gnupg stays writable for the keyrings and agent sockets that live
   # alongside them.
   #
@@ -239,7 +239,7 @@ in
       "${config.home.homeDirectory}/.config/vscode-sync-settings/profiles/main";
   };
 
-  # The tridactyl native messaging host lives in modules/home/browsers.nix now,
+  # The tridactyl native messaging host lives in modules/home/darwin/browsers.nix now,
   # as programs.firefox.nativeMessagingHosts, which gets it from
   # pkgs.tridactyl-native instead of from a vendored manifest and Python script.
 }

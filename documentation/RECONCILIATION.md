@@ -77,7 +77,7 @@ SECRETS.md), so it was not content-diffed.
   `current.conf` selected.
 - **`.config/claude/mcp.json` + `~/.claude/bin/claude-mcp-sync`**: decided,
   flake-declared. Servers live in `programs.mcp.servers` in
-  `modules/home/mcp.nix`, which hands them to Claude Code as a generated
+  `modules/home/shared/mcp.nix`, which hands them to Claude Code as a generated
   plugin, so neither the manifest nor the sync script exists any more.
 
 ## (d) Backport gaps: legacy `macos` repo → flake

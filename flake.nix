@@ -31,7 +31,7 @@
 
     # Glide packaged for nix, plus a home-manager module built on
     # home-manager's own mkFirefoxModule factory. The packages are not used to
-    # install Glide (see modules/home/browsers.nix for why Homebrew still owns
+    # install Glide (see modules/home/darwin/browsers.nix for why Homebrew still owns
     # that); the module is what we're after, and glide-browser-bin-unwrapped is
     # the source the Glide Developer bundle is derived from.
     glide = {

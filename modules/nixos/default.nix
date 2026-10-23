@@ -97,7 +97,7 @@ in
   services.rpcbind.enable = true;
   boot.supportedFilesystems = [ "nfs" ];
 
-  # The cross-platform baseline is ../packages.nix, imported above. These are
+  # The cross-platform baseline is ../shared/packages.nix, imported above. These are
   # the ones that only make sense here: GNU coreutils is what a Linux system
   # already assumes, and adding it on darwin would shadow the BSD tools the
   # rest of that config is written against.

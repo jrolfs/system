@@ -31,7 +31,7 @@ The migration from homeshick castles and nix channels is still in progress. The
 
 ```bash
 # Build and activate this host. Generated for every machine by
-# modules/home/nix-commands.nix, with platform flags from darwin.nix/linux.nix.
+# modules/home/shared/nix-commands.nix, with platform flags from darwin.nix/linux.nix.
 nix-switch
 nix-switch --pull       # fast-forward the tree being switched first, from anywhere
 nix-switch --worktree=<branch>  # switch a worktree's flake instead of main's
@@ -73,12 +73,17 @@ a nested worktree session would also load main's copy.
 ```
 flake.nix          inputs, the three host configurations, the `glide` devShell
 modules/
+  shared/          system configuration every host gets, macOS and Linux alike
+    packages.nix     packages every machine gets
+    bootstrap.nix    the `bootstrap` CLI, for 1Password-backed secrets
+    home-backup.nix  what home-manager does with an unmanaged file in its way
   darwin/          macOS system configuration (nix-darwin)
-  home/            home-manager, shared plus darwin.nix / linux.nix
   nixos/           NixOS system configuration
-  packages.nix     packages every machine gets
-  bootstrap.nix    the `bootstrap` CLI, for 1Password-backed secrets
-  home-backup.nix  what home-manager does with an unmanaged file in its way
+  home/            home-manager, split the same way:
+    shared/          every machine
+    darwin/          macOS only
+    linux/           Linux only, including the Hyprland desktop
+  theme/           palette and fonts, read by both platforms
 hosts/             per-host overrides: ala, adrian, irulan (+ irulan/disko.nix)
 dotfiles/home/     the dotfile tree, linked into $HOME by modules/home
 documentation/     the companion docs listed below
@@ -119,10 +124,17 @@ links/             convenience symlink to /Library/LaunchDaemons
 
 ### modules/home
 
-`default.nix` links `dotfiles/home` into `$HOME`, `darwin.nix` and `linux.nix`
-are the per-platform shared modules, and the rest are subject-specific:
-`neovim.nix` (owns all of `~/.config/nvim`), `browsers.nix`, `zed.nix`,
-`ssh.nix`, `atuin.nix`, `wallpaper.nix`, `icloud.nix`, `claude-sync.nix`.
+home-manager configuration, in the same three layers as the system side.
+`flake.nix` loads `shared/` for every user and adds `darwin/` or `linux/` as a
+home-manager shared module by platform, so a module's directory is what decides
+where it applies.
+
+- `shared/`: `default.nix` links `dotfiles/home` into `$HOME`; beside it
+  `neovim.nix` (owns all of `~/.config/nvim`), `ssh.nix`, `atuin.nix`,
+  `claude-sync.nix`, `mcp.nix`, `nix-commands.nix`, `eza.nix`.
+- `darwin/`: `default.nix` plus `browsers.nix`, `zed.nix`, `raycast.nix`,
+  `wallpaper.nix`, `icloud.nix`.
+- `linux/`: `default.nix` plus `desktop/`, the Hyprland session.
 
 ## Companion docs
 

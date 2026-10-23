@@ -12,7 +12,7 @@ This tree was the `dot` and `macos` homeshick castles before the flake migration
 
 **A tracked file is not a linked file.** homeshick linked whatever sat in the castle. Here every path needs a declaration in `modules/home/`, and a tracked file nobody declared is simply absent on the machine, which reads as a broken feature rather than a missing symlink. Adding a file under `home/` is only half the change.
 
-**Not every path in `$HOME` has a file here.** Some are generated from nix options, so there is nothing in this tree to edit: `nix-switch`, `nix-rebuild` and `nix-update` come from `modules/home/nix-commands.nix` (written to `~/.config/zsh/init/nix.zsh`, with completion), `.zshrc.darwin` (`icn`, `mkbk`) from `modules/home/darwin.nix`, atuin from `modules/home/atuin.nix`, and direnv from `programs.direnv`. Most other tools are still lift-and-shift files in this tree.
+**Not every path in `$HOME` has a file here.** Some are generated from nix options, so there is nothing in this tree to edit: `nix-switch`, `nix-rebuild` and `nix-update` come from `modules/home/shared/nix-commands.nix` (written to `~/.config/zsh/init/nix.zsh`, with completion), `.zshrc.darwin` (`icn`, `mkbk`) from `modules/home/darwin/default.nix`, atuin from `modules/home/shared/atuin.nix`, and direnv from `programs.direnv`. Most other tools are still lift-and-shift files in this tree.
 
 **Whether an edit takes effect on save depends on the path.** Most files are copied into the nix store and need a rebuild. Others are `mkOutOfStoreSymlink`ed back to this tree and are live on save. Check rather than assume:
 

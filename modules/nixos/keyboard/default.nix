@@ -9,7 +9,7 @@
 # writes to a virtual one through uinput, so the same layout applies at the
 # text console, at the greeter and in Hyprland alike. The Mac-style ⌘ → Ctrl
 # remapping is the exception, and is only switched on inside Hyprland (see the
-# `mac` layer in layout.kbd and modules/home/desktop/kanata-layers.nix).
+# `mac` layer in layout.kbd and modules/home/linux/desktop/kanata-layers.nix).
 #
 # A system service rather than a user one because it reads /dev/input and
 # writes /dev/uinput, which the module grants to its own dedicated user.

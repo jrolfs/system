@@ -31,7 +31,7 @@ lib.mkIf config.desktop.enable {
     pkgs.obsidian
 
     # Same browser as the Macs, from the flake that also supplies the
-    # home-manager module in modules/home/browsers.nix. Glide publishes
+    # home-manager module in modules/home/darwin/browsers.nix. Glide publishes
     # x86_64-linux builds, so this is the identical binary story, not a
     # substitute.
     inputs.glide.packages.${system}.default

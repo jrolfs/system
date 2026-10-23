@@ -3,9 +3,9 @@
 # Linux-only home-manager shared module. Loaded automatically for every
 # nixosConfiguration via home-manager.sharedModules in flake.nix.
 #
-# Counterpart to modules/home/darwin.nix. Provides Linux-specific
+# Counterpart to modules/home/darwin/default.nix. Provides Linux-specific
 # environment tweaks; the bulk of the shell config is shared via
-# modules/home/default.nix and works on both OSes.
+# modules/home/shared/default.nix and works on both OSes.
 
 {
   # Inert unless the host sets desktop.enable.
