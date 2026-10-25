@@ -1,5 +1,5 @@
 /* ======================================================
-                Glide version: 0.1.64a
+                Glide version: 0.1.65a
    ====================================================== */
 // 
 
@@ -941,7 +941,7 @@ declare global {
 			/**
 			 * Find the first tab matching the given query filter.
 			 *
-			 * This is the same API as [browser.tabs.get](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/get),
+			 * This is the same API as [browser.tabs.query](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/query),
 			 * but returns the first tab instead of an Array.
 			 */
 			get_first(query: Browser.Tabs.QueryQueryInfoType): Promise<Browser.Tabs.Tab | undefined>;
