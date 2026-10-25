@@ -24,11 +24,11 @@
     "claude-sync": {
       "flake": false,
       "locked": {
-        "lastModified": 1785067637,
-        "narHash": "sha256-hsIski28Dr3k3+/0/+k6XySAeoQ6e5nTeLAGRtZ2kAQ=",
+        "lastModified": 1791256317,
+        "narHash": "sha256-cqXZcYTpK3Y0cDf6ShRzH3NY/RLadexkd0DuNJUF6HI=",
         "owner": "tawanorg",
         "repo": "claude-sync",
-        "rev": "49420ef63fe0bbd5b06e64c7dec421f39c9de0c4",
+        "rev": "5f211c3e752554ecbfb9372b75396f5c2da67cad",
         "type": "github"
       },
       "original": {

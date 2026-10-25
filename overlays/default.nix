@@ -108,10 +108,30 @@ in
   # license, so it couldn't be upstreamed as-is. The npm package of the same
   # name is only a prebuilt-binary shim; this builds from the Go source pinned
   # by the `claude-sync` flake input (bump with `nix flake update claude-sync`).
+  #
+  # Two patches until upstream catches up. Both are diffs against 1.17.2, so a
+  # bump of the input means regenerating or dropping them.
+  #
+  # pr-77 is tawanorg/claude-sync#77 (sjalife, head 6532402) merged onto main.
+  # Without it, a session transcript appended on two machines is a "conflict"
+  # rather than a fast-forward, history.jsonl is last-writer-wins, and .conflict
+  # copies get uploaded to every other machine. The maintainer has chosen to
+  # land it first (#91) but hadn't reviewed it as of 2026-10-24.
+  #
+  # conflict-copy-loop is ours. A pull that parks the remote copy as .conflict
+  # leaves the original's state as it was, so every following pull parks
+  # another identical copy: 791 of them from 29 files on ala in October. #77
+  # fixes that for transcripts only. The patch stops it for every file by
+  # recording identical content as resolved and skipping a copy the newest one
+  # already holds.
   claude-sync = super.buildGoModule {
     pname = "claude-sync";
-    version = "0.4.0";
+    version = "1.17.2";
     src = inputs.claude-sync;
+    patches = [
+      ./claude-sync/pr-77-multi-machine-sync.patch
+      ./claude-sync/conflict-copy-loop.patch
+    ];
     vendorHash = "sha256-VLqVk5bhM+WoEbP+agFpm1LjzI2qFWlWQZB8yV2vbOU=";
     subPackages = [ "cmd/claude-sync" ];
     meta.mainProgram = "claude-sync";
