@@ -160,8 +160,10 @@
   },
   "semantic_tokens": "combined",
   "agent_servers": {
-    "opencode": {
-      "type": "registry"
+    "OpenCode": {
+      "type": "custom",
+      "command": "/run/current-system/sw/bin/opencode",
+      "args": ["acp"]
     },
     "claude-acp": {
       "default_config_options": {
@@ -172,17 +174,21 @@
     },
     "Claude Foundry": {
       "type": "custom",
-      "command": "/bin/zsh",
-      "args": [
-        "-c",
-        "source ~/.config/zsh/init/keys.zsh && exec npx -y @agentclientprotocol/claude-agent-acp"
-      ],
+      "command": "/etc/profiles/per-user/jamie/bin/claude-foundry-acp",
       "default_config_options": {
         "mode": "auto",
         "effort": "xhigh"
       },
       "env": {
         "ANTHROPIC_MODEL": "claude-opus-5"
+      }
+    },
+    "Claude Platform": {
+      "type": "custom",
+      "command": "/etc/profiles/per-user/jamie/bin/claude-api-acp",
+      "default_config_options": {
+        "mode": "auto",
+        "effort": "xhigh"
       }
     }
   },

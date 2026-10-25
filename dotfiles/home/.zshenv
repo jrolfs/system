@@ -83,8 +83,7 @@ export NIXPKGS_ALLOW_UNFREE=1
 
 export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 
-# Claude Code
-export CLAUDE_CODE_USE_FOUNDRY=1
+# Claude Code. Which account it bills is up to modules/home/shared/claude-accounts.nix.
 export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5
 export ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-4-5
 export ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-5-5[1m]
