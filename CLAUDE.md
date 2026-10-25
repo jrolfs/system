@@ -31,7 +31,7 @@ The migration from homeshick castles and nix channels is still in progress. The
 
 ```bash
 # Build and activate this host. Generated for every machine by
-# modules/home/shared/nix-commands.nix, with platform flags from darwin.nix/linux.nix.
+# modules/home/shared/nix-commands.nix, with platform flags from modules/home/{darwin,linux}/default.nix.
 nix-switch
 nix-switch --pull       # fast-forward the tree being switched first, from anywhere
 nix-switch --worktree=<branch>  # switch a worktree's flake instead of main's
@@ -131,7 +131,8 @@ where it applies.
 
 - `shared/`: `default.nix` links `dotfiles/home` into `$HOME`; beside it
   `neovim.nix` (owns all of `~/.config/nvim`), `ssh.nix`, `atuin.nix`,
-  `claude-sync.nix`, `mcp.nix`, `nix-commands.nix`, `eza.nix`.
+  `claude-sync.nix`, `onepassword.nix` (the `op` those two read through),
+  `gh.nix`, `starship.nix`, `mcp.nix`, `nix-commands.nix`, `eza.nix`.
 - `darwin/`: `default.nix` plus `browsers.nix`, `zed.nix`, `raycast.nix`,
   `wallpaper.nix`, `icloud.nix`.
 - `linux/`: `default.nix` plus `desktop/`, the Hyprland session.
@@ -157,15 +158,15 @@ would otherwise have to be rediscovered.
 ## Conventions
 
 - Flakes only. `nix.nixPath` and the registry are pinned to the flake's inputs
-  in `modules/darwin/default.nix`, so `nix shell nixpkgs#foo` resolves to the
+  in `modules/shared/nix.nix`, so `nix shell nixpkgs#foo` resolves to the
   same nixpkgs the system was built from.
 - `allowUnfree`, `allowBroken` and `allowUnsupportedSystem` are all on.
 - Homebrew cleanup is `zap`, so any cask not listed is removed on the next
   switch. `onActivation.upgrade` is `true`, which is deliberate and argued in
   `homebrew.nix`.
 - Touch ID for sudo via `security.pam.services.sudo_local.touchIdAuth`.
-- `nix.package` is pinned to Lix 2.94 because devbox needs
-  `builtins.fetchClosure`, which Lix 2.95 removed.
+- `nix.package` is Lix, the same release on every machine, set in
+  `modules/shared/nix.nix`.
 - Comments explain *why*, not what. Most modules here open with a paragraph on
   the failure they exist to prevent; match that rather than summarising the
   code.

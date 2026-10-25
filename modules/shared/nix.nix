@@ -1,14 +1,14 @@
-{ inputs, ... }:
+{ inputs, pkgs, ... }:
 
 # Nix and nixpkgs settings that read the same in nix-darwin and NixOS. What
 # stays per platform is where the option names differ (garbage collection and
-# store optimisation) or the value does (nix.package: the Macs pin Lix 2.94 for
-# devbox).
+# store optimisation).
 
 let
   overlays = import ../../overlays inputs;
 in
 {
+  nix.package = pkgs.lix;
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   # So `nix shell nixpkgs#foo` and `nix-shell -p foo` resolve to the nixpkgs

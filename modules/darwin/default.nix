@@ -57,15 +57,6 @@
     # actually answers over SSH.
     pkgs.pinentry_mac
 
-    #
-    # Nix
-
-    # Not macOS-specific, but it is why nix.package is pinned to Lix 2.94
-    # below, and irulan already runs 2.95. Pinning there too would downgrade a
-    # daemon that has been running against that store, for a tool on its way
-    # out in favour of devenv, which is shared.
-    pkgs.devbox
-
   ];
 
   system.activationScripts.applications.enable = true;
@@ -95,11 +86,6 @@
 
   security.pam.services.sudo_local.touchIdAuth = true;
 
-  # Pinned to 2.94.2: Lix 2.95 ("Kakigōri", 2026-03-25) removed `builtins.fetchClosure`
-  # along with CA derivations, and devbox's install path depends on fetchClosure to pull
-  # pinned packages from cache.nixos.org (it fails with "attribute 'fetchClosure' missing").
-  # 2.94 is the last Lix that ships it. Revert to `pkgs.lix` once devbox repos move to devenv.
-  nix.package = pkgs.lixPackageSets.lix_2_94.lix;
   nix.enable = true;
 
   # The nixpkgs entries are in ../shared/nix.nix; nix-darwin is the extra here.

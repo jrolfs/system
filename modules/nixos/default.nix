@@ -14,7 +14,6 @@
   system.stateVersion = "24.05";
 
   # The settings both platforms share are in ../shared/nix.nix.
-  nix.package = pkgs.lix;
   nix.settings.auto-optimise-store = true;
   nix.gc = {
     automatic = true;
