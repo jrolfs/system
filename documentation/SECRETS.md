@@ -99,15 +99,93 @@ by; **"is it a credential"** is the right one.
   `.zshenv` costs an `op` round-trip (network, possibly biometric) on *every*
   shell spawn, and exposes the value to every child process. Prefer, in order:
   1. **`op plugin`** for supported tools — `op plugin init <tool>` makes the
-     tool fetch its own credential, biometric-gated. Already in use for `gh`.
+     tool fetch its own credential, biometric-gated. Not in use: a `gh` plugin
+     was configured once (`~/.config/op/plugins/gh.json`), but nothing sources
+     `plugins.sh`, and `gh` authenticates through `gh auth login` instead.
   2. **`op run -- <command>`** — scoped to one process.
   3. A **lazy shell function** that fetches on first use and caches for the
      session.
 
   `.config/zsh/init/keys.zsh` is the current instance of this anti-pattern and
-  the main candidate for `op plugin` / `op run`.
+  the main candidate for `op plugin` / `op run`. See
+  [Isolating secrets per command](#isolating-secrets-per-command).
 - **Syncing `~/.gnupg` wholesale.** gpg-agent mutates `private-keys-v1.d`, and
   there are sockets and lock files in there. Export/import instead.
+
+## Isolating secrets per command
+
+The aim for this migration is that a secret reaches only the process that uses
+it. `keys.zsh` does the opposite. It exports a handful of API keys and tokens
+into every shell, and from there into everything that shell starts. Before
+moving any of them, find which command actually reads each one. Some may have
+no consumer left at all.
+
+### The mechanism
+
+zsh's equivalent of fish's `function --wraps` is a function named after the
+command that sets the variable as a prefix assignment. A prefix assignment puts
+the variable in that one process's environment and never in the shell's:
+
+```zsh
+tool() {
+  TOOL_TOKEN="$(op read 'op://<vault>/<item>/credential')" command tool "$@"
+}
+```
+
+`command` reaches the real binary instead of recursing into the function.
+Completion needs nothing when the function shares the command's name, because
+zsh picks a completer by command name. A wrapper with a different name needs
+`compdef <wrapper>=<command>`, registered from `.zshrc`'s `zicompinit` block for
+the same reason `pnpm.zsh` and `worktrunk.zsh` are: `compdef` doesn't exist
+before `compinit` runs.
+
+Every call costs an `op read`. If that is too slow for a command run often,
+cache the value on first use in a global that is not exported (`typeset -g`).
+Child processes never inherit it, so the isolation holds.
+
+### Functions or wrapper scripts
+
+A shell function only exists inside interactive zsh. Anything that runs the tool
+without that shell, such as an editor, a git hook or a launchd agent, gets the
+bare binary and no secret. Where that matters, the wrapper should be a script on
+`PATH` instead: a `pkgs.writeShellScriptBin` named after the tool that execs the
+real one by absolute path. It works wherever `PATH` does, at the cost of
+shadowing the real binary for every caller.
+
+### Generating them from Nix
+
+Either form is a few lines of boilerplate per secret, which suits a
+home-manager module: a list of `{ command, variable, reference }` entries
+rendered into zsh functions or wrapper scripts, with completion registered
+alongside. This is the Nix-native piece the castle never had. What gets committed
+is references rather than values, the same property that makes `secrets.json`
+reviewable.
+
+Two cautions:
+
+- **This repo is public**, and an `op://` reference names the vault and the
+  item. Keep the entry list in the bootstrap repo's manifest and have the module
+  read it, or use item IDs here.
+- **One manifest, not two.** Either `secrets.json` gains a command/variable
+  entry shape, or the module becomes the source and `materialize` keeps only
+  the file targets.
+
+### What it buys, and what it doesn't
+
+Scoping keeps a secret out of every other process's environment, so unrelated
+tools, subshells and crash reports never see it. The wrapped command and its
+children still do, and on macOS any process running as the same user can read
+another's environment (`ps -E`). It limits how far a secret spreads. It is not a
+boundary against code running as you.
+
+### Order of preference
+
+1. **`op plugin`**, where 1Password ships one. The tool fetches its own
+   credential behind Touch ID, and nothing is committed at all.
+2. **A generated wrapper**, as above.
+3. **`op run -- <command>`** for one-off use.
+4. **A materialized `0600` file**, only for tools that read a file and nothing
+   else.
 
 ## `mkOutOfStoreSymlink` is homeshick
 
@@ -138,6 +216,19 @@ URLs), and this repo is public. Options: a private repo consumed as a flake
 input, or **just keep a slimmed castle for them**. Not everything has to
 migrate; a castle holding only non-secret overlays can drop git-crypt entirely
 and become a plain private repo. That's simpler than today.
+
+### Untracked secrets inside a project
+
+The castle's other job is keeping a project's untracked files, like `.env`,
+alive across clones and machines. Some of those hold real credentials, which
+puts them in the secret category even though they sit among the overlays.
+
+They don't have to. `op run --env-file=.env -- <command>` and `op inject` both
+resolve `op://` references, so an `.env` can hold references instead of values.
+That file is then private rather than secret, and it can live in the overlay
+store with everything else. A tool that insists on a literal `.env` gets one
+from `op inject -i .env.tpl -o .env` with `0600`, regenerated rather than
+synced.
 
 Per-repo gitignore overlays (`ignore-claude`, `ignore-zed`,
 `ignore-devbox-and-claude-and-zed`, selected via `includeIf`) already live in the
@@ -299,8 +390,10 @@ them.
    config. Half of this exists already (see Status).
 4. **Migrate the remaining secrets one at a time**, with `materialize` proving
    each before removing it from the castle.
-5. **Then `op plugin`** for tools that support it — may eliminate several
-   manifest entries outright, `keys.zsh` especially.
+5. **Then isolate what's left in `keys.zsh`**: `op plugin` where one exists,
+   otherwise a per-command wrapper. See
+   [Isolating secrets per command](#isolating-secrets-per-command). The goal is
+   deleting `keys.zsh` outright, not moving its exports somewhere else.
 6. **Finally** decide whether the castle drops git-crypt and stays (overlays
    only), or goes away entirely.
 
