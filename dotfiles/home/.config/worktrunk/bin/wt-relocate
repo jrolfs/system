@@ -40,9 +40,11 @@ steps=(claude_code)
 
 # The store name is the path with every character that isn't a letter or digit
 # turned into a dash, the same munging claude-mv-project's slugFor does.
+# --merge because the new store may already exist: claude-sync brings down
+# the threads another machine re-keyed when it relocated first.
 claude_code() {
   [ -d "$HOME/.claude/projects/${1//[^a-zA-Z0-9]/-}" ] || return 0
-  claude-mv-project "$1" "$2"
+  claude-mv-project --merge "$1" "$2"
 }
 
 # A `wt handoff` snapshot is named after the worktree's directory and records its
@@ -51,10 +53,15 @@ claude_code() {
 # matched up with the worktree by branch: a snapshot of a branch checked out
 # here, recorded at a path under this home that no longer exists. Recorded
 # paths are resolved against this machine's home first, so a snapshot handed
-# off from the other platform is judged by where it would restore here. This
-# runs after the move, so worktrees are already where the template puts them.
+# off from the other platform is judged by where it would restore here.
+#
+# Worktrees are judged by where they settle, which is the second argument as
+# `branch path` lines. A worktree still waiting to move is left out, because
+# its path is about to change and a snapshot moved to it now would only need
+# moving back. The third argument lists paths a preview's moves would vacate,
+# which don't exist yet as far as the check below is concerned.
 snapshots() {
-  local mode=$1 remote table branch path ref recorded_branch recorded on_origin target
+  local mode=$1 layout=$2 vacated=${3-} remote table branch path ref recorded_branch recorded on_origin target
 
   if ! git fetch --quiet origin "+refs/wip/*:refs/wip/*" 2>/dev/null; then
     echo "▲ Could not fetch handoff snapshots from origin; left them as they are" >&2
@@ -70,10 +77,8 @@ snapshots() {
       recorded=$(local_path "$recorded")
       [ "$recorded_branch" = "$branch" ] && [ "$recorded" != "$path" ] || continue
       case $recorded in "$HOME"/*) ;; *) continue ;; esac
-      [ ! -e "$recorded" ] || continue
+      [ ! -e "$recorded" ] || grep -qxF "$recorded" <<<"$vacated" || continue
 
-      # A worktree the preview says would move still has its old path, so its
-      # snapshot only shows up here once it has actually moved.
       if [ "$mode" = preview ]; then
         target=$(snapshot_name "$path")
         if [ "refs/wip/$target" != "$ref" ] && git rev-parse --verify --quiet "refs/wip/$target" >/dev/null; then
@@ -90,7 +95,7 @@ snapshots() {
         status=1
       }
     done <<<"$table"
-  done <<<"$(worktrees)"
+  done <<<"$layout"
 }
 
 # The path is in the snapshot's commit, so the snapshot is replaced by a copy
@@ -174,6 +179,25 @@ snapshot_name() {
   printf '%s' "$name"
 }
 
+# Tab-separated `branch from to` lines, one per worktree `wt step relocate`
+# would move given the same arguments.
+plan() {
+  wt step relocate --dry-run --format json "$@" \
+    | jq -r '.entries[] | [.branch, .from, .to] | @tsv'
+}
+
+# The worktrees as they will stand once a plan has been carried out.
+planned_layout() {
+  awk -F '\t' 'NR == FNR { to[$1] = $3; next } { print $1 "\t" ($1 in to ? to[$1] : $2) }' \
+    <(printf '%s\n' "$1") <(worktrees)
+}
+
+# The worktrees a plan has nothing left to do for.
+settled_layout() {
+  awk -F '\t' 'NR == FNR { pending[$1]; next } !($1 in pending)' \
+    <(printf '%s\n' "$1") <(worktrees)
+}
+
 # Tab-separated `branch path` lines, one per worktree with a branch checked out.
 worktrees() {
   git worktree list --porcelain | awk '
@@ -194,11 +218,20 @@ done
 main_top=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 main_dir=$(basename "$main_top")
 
+# Taken before anything moves, so a bad argument stops here rather than after
+# the snapshot step has run against worktrees that never moved.
+moves=$(plan ${arguments[@]+"${arguments[@]}"})
+
 if [ $preview = yes ]; then
   wt step relocate --dry-run ${arguments[@]+"${arguments[@]}"}
-  snapshots preview
+  snapshots preview "$(planned_layout "$moves")" "$(cut -f2 <<<"$moves")"
   exit 0
 fi
+
+# `git worktree move` won't create the directory a worktree moves into.
+cut -f3 <<<"$moves" | while IFS= read -r target; do
+  [ -z "$target" ] || mkdir -p "$(dirname "$target")"
+done
 
 before=$(worktrees)
 
@@ -220,5 +253,10 @@ while IFS=$'\t' read -r branch old; do
   done
 done <<<"$before"
 
-snapshots move
+if pending=$(plan ${arguments[@]+"${arguments[@]}"}); then
+  snapshots move "$(settled_layout "$pending")"
+else
+  echo "▲ Could not tell which worktrees are still to move; left handoff snapshots as they are" >&2
+  status=1
+fi
 exit $status

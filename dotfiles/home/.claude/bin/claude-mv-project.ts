@@ -18,8 +18,10 @@
  *
  * When the destination already has a store of its own, because another machine
  * has been working in the new location, `--merge` moves the transcripts into it
- * instead of renaming. Session filenames are uuids, so the two sets coexist and
- * a collision means the same session is already there.
+ * instead of renaming. Session filenames are uuids, so the two sets coexist. A
+ * session the destination already has, with a transcript at least as long, is
+ * dropped from the old store rather than moved. Any other name in both stores
+ * stops the move before anything changes.
  *
  * `--session` re-keys named sessions rather than the store, for the case where
  * one thread moves and the rest stay: work that starts in a main checkout and
@@ -32,7 +34,15 @@
  * multi-machine setups run this only once the machine still writing the old key
  * has stopped (its pushes would resurrect it).
  */
-import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import * as z from "zod";
 
@@ -77,6 +87,44 @@ const resolveSessions = (store: string, wanted: readonly string[]): SessionMatch
       .map(({ want, ids: found }) =>
         found.length ? `${want} matches ${found.length} sessions` : `nothing for ${want} in the store`,
       ),
+  };
+};
+
+const lineCount = (path: string): number =>
+  readFileSync(path).reduce((count, byte) => (byte === 0x0a ? count + 1 : count), 0);
+
+interface Collisions {
+  /** Sessions the destination already has, at least as far along. */
+  readonly duplicates: readonly string[];
+  /** Everything else present in both stores. */
+  readonly conflicts: readonly string[];
+}
+
+/**
+ * Split names present in both stores into sessions the destination already
+ * has and everything else.
+ */
+const partitionCollisions = (
+  collisions: readonly string[],
+  oldStore: string,
+  newStore: string,
+): Collisions => {
+  // The usual way a destination gets a session is claude-sync pulling it from
+  // a machine that re-keyed the store first. Transcripts are append-only, so a
+  // copy with at least as many lines is the same session at least as far
+  // along. Lines rather than bytes, because only one side has had its paths
+  // rewritten. A session's `<id>/` directory follows its transcript, since
+  // claude-sync carries the two together.
+  const synced = new Set(
+    collisions
+      .filter((name) => name.endsWith(".jsonl"))
+      .filter((name) => lineCount(join(oldStore, name)) <= lineCount(join(newStore, name)))
+      .map((name) => name.replace(/\.jsonl$/, "")),
+  );
+  const isDuplicate = (name: string): boolean => synced.has(name.replace(/\.jsonl$/, ""));
+  return {
+    duplicates: collisions.filter(isDuplicate),
+    conflicts: collisions.filter((name) => !isDuplicate(name)),
   };
 };
 
@@ -129,44 +177,53 @@ const main = (): number => {
   const collisions = existing
     ? names.filter((name) => readdirSync(newStore).includes(name)).sort()
     : [];
-  if (collisions.length) {
+  const { duplicates, conflicts } = partitionCollisions(collisions, oldStore, newStore);
+  if (conflicts.length) {
     return fail(
-      `${collisions.length} name(s) exist in both stores, starting with ` +
-        `${collisions[0]}; resolve by hand`,
+      `${conflicts.length} name(s) exist in both stores, starting with ` +
+        `${conflicts[0]}; resolve by hand`,
     );
   }
+  const moving = names.filter((name) => !duplicates.includes(name));
+  const dropped = duplicates.filter((name) => name.endsWith(".jsonl")).length;
+  const droppedNote = dropped
+    ? `${dropped} session(s) already in ${newStore}, dropped from ${oldStore}`
+    : undefined;
 
   const replacements = [
     replacementFor(old, next),
     replacementFor(slugFor(old), slugFor(next)),
   ];
   const what = selected
-    ? `${selected.sessions.length} session(s)`
-    : `${names.length} entr${names.length === 1 ? "y" : "ies"}`;
+    ? `${selected.sessions.filter((id) => !duplicates.includes(`${id}.jsonl`)).length} session(s)`
+    : `${moving.length} entr${moving.length === 1 ? "y" : "ies"}`;
 
   if (args["dry-run"]) {
-    const changed = names.reduce(
+    const changed = moving.reduce(
       (total, name) =>
         total + rewritePaths(join(oldStore, name), replacements, { dryRun: true }),
       0,
     );
     console.log(`would move ${what}\n  from ${oldStore}\n    to ${newStore}`);
     console.log(`would rewrite paths in ${changed} file(s)`);
+    if (droppedNote) console.log(`would leave ${droppedNote}`);
     return 0;
   }
 
   mkdirSync(newStore, { recursive: true });
-  const changed = names.reduce((total, name) => {
+  const changed = moving.reduce((total, name) => {
     const destination = join(newStore, name);
     renameSync(join(oldStore, name), destination);
     return total + rewritePaths(destination, replacements);
   }, 0);
+  duplicates.forEach((name) => rmSync(join(oldStore, name), { recursive: true }));
 
   // The store itself only goes when everything in it left.
   if (!readdirSync(oldStore).length) rmdirSync(oldStore);
 
   console.log(`moved ${what}\n  from ${oldStore}\n    to ${newStore}`);
   console.log(`rewrote paths in ${changed} file(s)`);
+  if (droppedNote) console.log(droppedNote);
   console.log(`threads now list under: cd ${next} && claude --resume`);
   return 0;
 };

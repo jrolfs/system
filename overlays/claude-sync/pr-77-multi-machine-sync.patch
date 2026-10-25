@@ -1,0 +1,2896 @@
+diff --git a/cmd/claude-sync/main.go b/cmd/claude-sync/main.go
+index 4f0d47f..b41c315 100644
+--- a/cmd/claude-sync/main.go
++++ b/cmd/claude-sync/main.go
+@@ -1010,6 +1010,18 @@ func runWebDAVWizard(webdavURL, username, password, pathPrefix string) (*storage
+ 	return cfg, nil
+ }
+ 
++// reportQuietErrors prints per-file sync errors to stderr in quiet mode.
++// Session hooks run with -q, which suppresses all normal output — but a
++// failure must never be invisible.
++func reportQuietErrors(result *sync.SyncResult) {
++	if !quiet || result == nil {
++		return
++	}
++	for _, e := range result.Errors {
++		fmt.Fprintf(os.Stderr, "claude-sync: %v\n", e)
++	}
++}
++
+ func pushCmd() *cobra.Command {
+ 	var includeMCP bool
+ 
+@@ -1072,6 +1084,8 @@ func pushCmd() *cobra.Command {
+ 				return err
+ 			}
+ 
++			reportQuietErrors(result)
++
+ 			if !quiet {
+ 				fmt.Println() // Clear the progress line
+ 
+@@ -1201,6 +1215,8 @@ Examples:
+ 				return err
+ 			}
+ 
++			reportQuietErrors(result)
++
+ 			if !quiet {
+ 				fmt.Println() // Clear the progress line
+ 
+diff --git a/internal/storage/gcs/gcs.go b/internal/storage/gcs/gcs.go
+index 670116c..2c72eb7 100644
+--- a/internal/storage/gcs/gcs.go
++++ b/internal/storage/gcs/gcs.go
+@@ -160,6 +160,9 @@ func (c *Client) List(ctx context.Context, prefix string) ([]appstorage.ObjectIn
+ func (c *Client) Head(ctx context.Context, key string) (*appstorage.ObjectInfo, error) {
+ 	attrs, err := c.client.Bucket(c.bucket).Object(key).Attrs(ctx)
+ 	if err != nil {
++		if errors.Is(err, storage.ErrObjectNotExist) {
++			return nil, fmt.Errorf("%s: %w", key, appstorage.ErrNotFound)
++		}
+ 		return nil, err
+ 	}
+ 
+diff --git a/internal/storage/r2/r2.go b/internal/storage/r2/r2.go
+index a7f2dad..697faad 100644
+--- a/internal/storage/r2/r2.go
++++ b/internal/storage/r2/r2.go
+@@ -186,6 +186,10 @@ func (c *Client) Head(ctx context.Context, key string) (*storage.ObjectInfo, err
+ 		Key:    aws.String(key),
+ 	})
+ 	if err != nil {
++		var notFound *types.NotFound
++		if errors.As(err, &notFound) {
++			return nil, fmt.Errorf("%s: %w", key, storage.ErrNotFound)
++		}
+ 		return nil, err
+ 	}
+ 
+diff --git a/internal/storage/s3/s3.go b/internal/storage/s3/s3.go
+index 3006f47..e34fbf3 100644
+--- a/internal/storage/s3/s3.go
++++ b/internal/storage/s3/s3.go
+@@ -200,6 +200,10 @@ func (c *Client) Head(ctx context.Context, key string) (*storage.ObjectInfo, err
+ 		Key:    aws.String(key),
+ 	})
+ 	if err != nil {
++		var notFound *types.NotFound
++		if errors.As(err, &notFound) {
++			return nil, fmt.Errorf("%s: %w", key, storage.ErrNotFound)
++		}
+ 		return nil, err
+ 	}
+ 
+diff --git a/internal/storage/storage.go b/internal/storage/storage.go
+index fbd5c7e..2fb2985 100644
+--- a/internal/storage/storage.go
++++ b/internal/storage/storage.go
+@@ -2,10 +2,23 @@ package storage
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
+ 	"time"
+ )
+ 
++// ErrNotFound distinguishes a missing object from transient failures
++// (timeouts, throttling, 5xx). Adapters wrap their provider-specific
++// not-found errors with it; callers that must not confuse "absent" with
++// "unreachable" — such as the history merge-on-push, where the difference is
++// clobbering the bucket union — check it via IsNotFound.
++var ErrNotFound = errors.New("object not found")
++
++// IsNotFound reports whether err indicates the object does not exist.
++func IsNotFound(err error) bool {
++	return errors.Is(err, ErrNotFound)
++}
++
+ // Provider represents a storage provider type
+ type Provider string
+ 
+diff --git a/internal/storage/webdav/webdav.go b/internal/storage/webdav/webdav.go
+index ed736a2..acebb49 100644
+--- a/internal/storage/webdav/webdav.go
++++ b/internal/storage/webdav/webdav.go
+@@ -365,7 +365,7 @@ func (c *Client) Head(ctx context.Context, key string) (*storage.ObjectInfo, err
+ 	defer func() { _ = resp.Body.Close() }()
+ 
+ 	if resp.StatusCode == http.StatusNotFound {
+-		return nil, fmt.Errorf("object not found: %s", key)
++		return nil, fmt.Errorf("%s: %w", key, storage.ErrNotFound)
+ 	}
+ 
+ 	if resp.StatusCode != 207 {
+diff --git a/internal/sync/ccdsessions.go b/internal/sync/ccdsessions.go
+new file mode 100644
+index 0000000..85b3472
+--- /dev/null
++++ b/internal/sync/ccdsessions.go
+@@ -0,0 +1,378 @@
++package sync
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"os"
++	"path/filepath"
++	"sort"
++	"strings"
++
++	"github.com/tawanorg/claude-sync/internal/storage"
++)
++
++// Claude Code Desktop session-record sync.
++//
++// The desktop app renders its sidebar from per-machine session records:
++// %APPDATA%\Claude\claude-code-sessions\<install-id>\<org-id>\local_*.json.
++// Each record carries the title, cwd (project grouping), archive state, and a
++// cliSessionId pointing at the transcript in ~/.claude/projects — which this
++// tool already syncs. Syncing the records gives every machine's sidebar the
++// same conversation list, backed by the transcripts the regular sync delivers.
++//
++// Remote layout: _ccd-sessions/<org-id>/local_<uuid>.json (encrypted+gzip like
++// everything else). The install-id segment is machine-specific and is
++// deliberately NOT part of the remote key: on pull, records land under the
++// pulling machine's own install directory. Records merge last-writer-wins by
++// the record's own lastActivityAt field; remote records are never deleted when
++// local ones disappear (same only-grows policy as history.jsonl).
++//
++// Trust state is intentionally out of scope: it lives in ~/.claude.json and
++// gates execution of project hooks/CLAUDE.md — syncing it would let a
++// compromised bucket pre-trust projects on every machine.
++
++// CCDSessionsPrefix is the reserved remote prefix for desktop session records.
++const CCDSessionsPrefix = "_ccd-sessions/"
++
++// SetCCDSessionsDir overrides the desktop-app session store location
++// (default: auto-detected next to the claude dir; tests inject a temp dir).
++func (s *Syncer) SetCCDSessionsDir(dir string) { s.ccdDir = dir }
++
++// ccdSessionsDir returns the desktop-app session store, or "" when this
++// machine has none (feature silently disabled).
++//
++// Two real layouts exist. Direct installs put the store at
++// <profile>/AppData/Roaming/Claude/claude-code-sessions. MSIX-packaged
++// installs make that Roaming path a redirect into the package's private
++// store — a redirect WSL's drvfs cannot traverse (os.Stat fails) — with the
++// physical directory at
++// <profile>/AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude/....
++// Both are probed; the glob covers the publisher-hash suffix.
++func (s *Syncer) ccdSessionsDir() string {
++	if s.ccdDir != "" {
++		return s.ccdDir
++	}
++	profile := filepath.Dir(s.claudeDir)
++
++	direct := filepath.Join(profile, "AppData", "Roaming", "Claude", "claude-code-sessions")
++	if info, err := os.Stat(direct); err == nil && info.IsDir() {
++		return direct
++	}
++
++	matches, _ := filepath.Glob(filepath.Join(profile, "AppData", "Local", "Packages",
++		"Claude_*", "LocalCache", "Roaming", "Claude", "claude-code-sessions"))
++	// Prefer a store that actually holds records: a hostile or stale package
++	// dir matching the glob must not shadow the real one. A single empty
++	// match is still accepted (fresh install, records arrive via pull).
++	first := ""
++	for _, m := range matches {
++		info, err := os.Stat(m)
++		if err != nil || !info.IsDir() {
++			continue
++		}
++		if first == "" {
++			first = m
++		}
++		if recs, err := ccdLocalRecords(m); err == nil && len(recs) > 0 {
++			return m
++		}
++	}
++	return first
++}
++
++// ccdSafeSegment allows only the flat charset used by real org ids
++// (UUIDs) and record filenames (local_<uuid>.json): no separators, no dots
++// except the .json suffix's, no way to spell "..".
++func ccdSafeSegment(s string) bool {
++	if s == "" || s == "." || s == ".." || len(s) > 128 {
++		return false
++	}
++	dots := 0
++	for _, r := range s {
++		switch {
++		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
++		case r == '.':
++			dots++
++		default:
++			return false
++		}
++	}
++	return dots <= 1
++}
++
++// ccdRecordMeta is the subset of a session record needed for merging.
++type ccdRecordMeta struct {
++	LastActivityAt int64 `json:"lastActivityAt"`
++}
++
++func ccdLastActivity(data []byte) int64 {
++	var m ccdRecordMeta
++	if json.Unmarshal(data, &m) != nil {
++		return 0
++	}
++	return m.LastActivityAt
++}
++
++// ccdNewerThan reports whether record a should win over record b: higher
++// lastActivityAt wins; on a tie with different bytes, the higher hash wins on
++// every machine, so ties converge instead of ping-ponging forever.
++func ccdNewerThan(a, b []byte) bool {
++	la, lb := ccdLastActivity(a), ccdLastActivity(b)
++	if la != lb {
++		return la > lb
++	}
++	return HashBytes(a) > HashBytes(b)
++}
++
++// ccdStripLocalFields removes permission-adjacent fields from a record before
++// it crosses machines: permissionMode and enabledMcpTools are this machine's
++// permission decisions, and syncing them would let a crafted record pre-open
++// tool access on every machine — the same reasoning that keeps trust state
++// local. The rewrite is deterministic (sorted keys) so both sides normalize
++// to identical bytes.
++func ccdStripLocalFields(data []byte) []byte {
++	var m map[string]json.RawMessage
++	if json.Unmarshal(data, &m) != nil {
++		return data
++	}
++	delete(m, "permissionMode")
++	delete(m, "enabledMcpTools")
++	out, err := json.Marshal(m)
++	if err != nil {
++		return data
++	}
++	return out
++}
++
++// ccdWriteAtomic writes via temp+rename: the desktop app is always running
++// during hook-driven syncs and reads these files — it must never observe a
++// half-written record.
++func ccdWriteAtomic(dest string, data []byte) error {
++	tmp, err := os.CreateTemp(filepath.Dir(dest), ".ccd-*.json")
++	if err != nil {
++		return err
++	}
++	defer func() { _ = os.Remove(tmp.Name()) }()
++	if _, err := tmp.Write(data); err != nil {
++		_ = tmp.Close()
++		return err
++	}
++	if err := tmp.Chmod(0600); err != nil {
++		_ = tmp.Close()
++		return err
++	}
++	if err := tmp.Close(); err != nil {
++		return err
++	}
++	return os.Rename(tmp.Name(), dest)
++}
++
++// ccdLocalRecords maps remote key -> local file path for every session
++// record in every install directory of the store.
++func ccdLocalRecords(ccdDir string) (map[string]string, error) {
++	records := make(map[string]string)
++	installs, err := os.ReadDir(ccdDir)
++	if err != nil {
++		return nil, err
++	}
++	for _, inst := range installs {
++		if !inst.IsDir() {
++			continue
++		}
++		orgs, err := os.ReadDir(filepath.Join(ccdDir, inst.Name()))
++		if err != nil {
++			continue
++		}
++		for _, org := range orgs {
++			if !org.IsDir() {
++				continue
++			}
++			files, err := os.ReadDir(filepath.Join(ccdDir, inst.Name(), org.Name()))
++			if err != nil {
++				continue
++			}
++			for _, f := range files {
++				if f.IsDir() || !strings.HasPrefix(f.Name(), "local_") || !strings.HasSuffix(f.Name(), ".json") {
++					continue
++				}
++				key := CCDSessionsPrefix + org.Name() + "/" + f.Name()
++				path := filepath.Join(ccdDir, inst.Name(), org.Name(), f.Name())
++				// Multiple install dirs (reinstalls) can hold the same record;
++				// keep the one that wins LWW, not the alphabetically last dir.
++				if prev, ok := records[key]; ok {
++					prevData, _ := os.ReadFile(prev)
++					curData, _ := os.ReadFile(path)
++					if !ccdNewerThan(curData, prevData) {
++						continue
++					}
++				}
++				records[key] = path
++			}
++		}
++	}
++	return records, nil
++}
++
++// ccdInstallDir picks the install directory pulled records are written into:
++// the most recently modified one (the active install). Empty when none exist.
++func ccdInstallDir(ccdDir string) string {
++	installs, err := os.ReadDir(ccdDir)
++	if err != nil {
++		return ""
++	}
++	type cand struct {
++		name string
++		mod  int64
++	}
++	var cands []cand
++	for _, inst := range installs {
++		if !inst.IsDir() {
++			continue
++		}
++		info, err := inst.Info()
++		if err != nil {
++			continue
++		}
++		cands = append(cands, cand{inst.Name(), info.ModTime().UnixNano()})
++	}
++	if len(cands) == 0 {
++		return ""
++	}
++	sort.Slice(cands, func(i, j int) bool { return cands[i].mod > cands[j].mod })
++	return filepath.Join(ccdDir, cands[0].name)
++}
++
++// pushCCDSessions uploads changed session records, letting a newer remote
++// copy win. Errors are collected per record; one bad record never blocks the
++// rest.
++func (s *Syncer) pushCCDSessions(ctx context.Context, result *SyncResult) {
++	ccdDir := s.ccdSessionsDir()
++	if ccdDir == "" {
++		return
++	}
++	records, err := ccdLocalRecords(ccdDir)
++	if err != nil {
++		result.Errors = append(result.Errors, fmt.Errorf("ccd sessions: %w", err))
++		return
++	}
++
++	for key, path := range records {
++		raw, err := os.ReadFile(path)
++		if err != nil {
++			continue
++		}
++		// A torn read (the app writes concurrently) must never become the
++		// bucket copy; skip and let the next sync retry a settled file.
++		if !json.Valid(raw) {
++			continue
++		}
++		local := ccdStripLocalFields(raw)
++		hash := HashBytes(local)
++		if st := s.state.GetFile(key); st != nil && st.Hash == hash {
++			continue
++		}
++
++		// Changed or new: only upload over a losing remote copy.
++		if _, err := s.storage.Head(ctx, key); err == nil {
++			remote, err := s.fetchDecoded(ctx, key, key)
++			if err != nil {
++				result.Errors = append(result.Errors, fmt.Errorf("%s: %w", key, err))
++				continue
++			}
++			if !ccdNewerThan(local, remote) && HashBytes(remote) != hash {
++				// Remote wins; pull will adopt it. Leave state stale.
++				continue
++			}
++		} else if !storage.IsNotFound(err) {
++			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", key, err))
++			continue
++		}
++
++		if err := s.uploadEncoded(ctx, key, local); err != nil {
++			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", key, err))
++			continue
++		}
++		info, err := os.Stat(path)
++		if err == nil {
++			s.state.UpdateFile(key, info, hash)
++			s.state.MarkUploaded(key)
++		}
++		result.Uploaded = append(result.Uploaded, key)
++	}
++}
++
++// pullCCDSessions materializes newer remote records into this machine's own
++// install directory.
++func (s *Syncer) pullCCDSessions(ctx context.Context, result *SyncResult) {
++	ccdDir := s.ccdSessionsDir()
++	if ccdDir == "" {
++		return
++	}
++	installDir := ccdInstallDir(ccdDir)
++	if installDir == "" {
++		return
++	}
++
++	objects, err := s.storage.List(ctx, CCDSessionsPrefix)
++	if err != nil {
++		result.Errors = append(result.Errors, fmt.Errorf("ccd sessions: %w", err))
++		return
++	}
++
++	for _, obj := range objects {
++		rel := strings.TrimPrefix(obj.Key, CCDSessionsPrefix)
++		parts := strings.Split(rel, "/")
++		if len(parts) != 2 || !strings.HasPrefix(parts[1], "local_") || !strings.HasSuffix(parts[1], ".json") {
++			continue
++		}
++		org, name := parts[0], parts[1]
++		// The bucket is treated as hostile: both segments become filepath.Join
++		// components, so restrict them to the flat charset real org ids and
++		// record names use — this forbids "..", backslashes, and anything
++		// path-like.
++		if !ccdSafeSegment(org) || !ccdSafeSegment(name) {
++			continue
++		}
++
++		if st := s.state.GetFile(obj.Key); st != nil && !obj.LastModified.After(st.Uploaded) {
++			continue
++		}
++
++		remote, err := s.fetchDecoded(ctx, obj.Key, obj.Key)
++		if err != nil {
++			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", obj.Key, err))
++			continue
++		}
++		// Never materialize invalid JSON into the app's live store, and strip
++		// permission-adjacent fields a hostile or older-binary record carries.
++		if !json.Valid(remote) {
++			continue
++		}
++		remote = ccdStripLocalFields(remote)
++
++		dest := filepath.Join(installDir, org, name)
++		if raw, err := os.ReadFile(dest); err == nil {
++			local := ccdStripLocalFields(raw)
++			if HashBytes(local) == HashBytes(remote) || !ccdNewerThan(remote, local) {
++				// Local wins or is identical; push publishes when needed.
++				continue
++			}
++		}
++
++		if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
++			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", obj.Key, err))
++			continue
++		}
++		if err := ccdWriteAtomic(dest, remote); err != nil {
++			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", obj.Key, err))
++			continue
++		}
++		info, err := os.Stat(dest)
++		if err == nil {
++			s.state.UpdateFile(obj.Key, info, HashBytes(remote))
++			s.state.MarkUploaded(obj.Key)
++		}
++		result.Downloaded = append(result.Downloaded, obj.Key)
++	}
++}
+diff --git a/internal/sync/ccdsessions_test.go b/internal/sync/ccdsessions_test.go
+new file mode 100644
+index 0000000..2049292
+--- /dev/null
++++ b/internal/sync/ccdsessions_test.go
+@@ -0,0 +1,310 @@
++package sync
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++const testOrg = "3d583d51-f79f-4cd8-a62d-780a3f79886c"
++
++// ccdRecord builds a minimal desktop-session record like the app writes.
++func ccdRecord(sessionID, title string, lastActivityAt int64) string {
++	return `{"sessionId":"` + sessionID + `","cliSessionId":"11111111-2222-4333-8444-555555555555",` +
++		`"cwd":"C:\\Users\\alice\\code\\proj","title":"` + title + `",` +
++		`"isArchived":false,"lastActivityAt":` + itoa64(lastActivityAt) + `}`
++}
++
++func itoa64(n int64) string {
++	if n == 0 {
++		return "0"
++	}
++	var b [20]byte
++	i := len(b)
++	for n > 0 {
++		i--
++		b[i] = byte('0' + n%10)
++		n /= 10
++	}
++	return string(b[i:])
++}
++
++// newCCDMachine is newTestMachine plus a desktop-app session store with one
++// install-id directory (different per machine, as in real installs).
++func newCCDMachine(t *testing.T, store *mockStorage, installID string) (*testEnv, string) {
++	t.Helper()
++	env := newTestMachine(t, store)
++	ccdDir := filepath.Join(t.TempDir(), "claude-code-sessions")
++	if err := os.MkdirAll(filepath.Join(ccdDir, installID, testOrg), 0700); err != nil {
++		t.Fatal(err)
++	}
++	env.syncer.SetCCDSessionsDir(ccdDir)
++	return env, ccdDir
++}
++
++func writeCCDRecord(t *testing.T, ccdDir, installID, name, content string) {
++	t.Helper()
++	if err := os.WriteFile(filepath.Join(ccdDir, installID, testOrg, name), []byte(content), 0600); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func readCCDRecord(t *testing.T, ccdDir, installID, name string) string {
++	t.Helper()
++	data, err := os.ReadFile(filepath.Join(ccdDir, installID, testOrg, name))
++	if err != nil {
++		t.Fatalf("record not found: %v", err)
++	}
++	return string(data)
++}
++
++// Detection must find the store in both real-world layouts: the direct
++// install path under AppData\Roaming, and the MSIX-packaged physical path
++// under AppData\Local\Packages (the Roaming path is an MSIX redirect there
++// that WSL's drvfs cannot traverse — verified on a real machine).
++func TestCCDSessionsDirDetection(t *testing.T) {
++	// Direct layout.
++	profile := t.TempDir()
++	direct := filepath.Join(profile, "AppData", "Roaming", "Claude", "claude-code-sessions")
++	if err := os.MkdirAll(direct, 0700); err != nil {
++		t.Fatal(err)
++	}
++	s := &Syncer{claudeDir: filepath.Join(profile, ".claude")}
++	if got := s.ccdSessionsDir(); got != direct {
++		t.Errorf("direct layout: got %q, want %q", got, direct)
++	}
++
++	// MSIX layout (no accessible Roaming path).
++	profile2 := t.TempDir()
++	msix := filepath.Join(profile2, "AppData", "Local", "Packages", "Claude_pzs8sxrjxfjjc",
++		"LocalCache", "Roaming", "Claude", "claude-code-sessions")
++	if err := os.MkdirAll(msix, 0700); err != nil {
++		t.Fatal(err)
++	}
++	s2 := &Syncer{claudeDir: filepath.Join(profile2, ".claude")}
++	if got := s2.ccdSessionsDir(); got != msix {
++		t.Errorf("msix layout: got %q, want %q", got, msix)
++	}
++
++	// No store at all.
++	s3 := &Syncer{claudeDir: filepath.Join(t.TempDir(), ".claude")}
++	if got := s3.ccdSessionsDir(); got != "" {
++		t.Errorf("no store: got %q, want empty", got)
++	}
++}
++
++// A record pushed from machine A must materialize on machine B under B's own
++// install-id directory (install-id is machine-specific and remapped).
++func TestCCDRecordSyncsAcrossMachines(t *testing.T) {
++	store := newMockStorage()
++	machineA, ccdA := newCCDMachine(t, store, "install-aaa")
++	machineB, ccdB := newCCDMachine(t, store, "install-bbb")
++	ctx := context.Background()
++
++	rec := ccdRecord("local_abc", "Prod cutover", 1000)
++	writeCCDRecord(t, ccdA, "install-aaa", "local_abc.json", rec)
++	writeFile(t, machineA.claudeDir, "CLAUDE.md", "# a")
++
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++	if _, err := machineB.syncer.Pull(ctx); err != nil {
++		t.Fatalf("B pull: %v", err)
++	}
++
++	// Records are normalized in transit (sorted keys, local-only permission
++	// fields stripped), so compare normalized forms.
++	got := readCCDRecord(t, ccdB, "install-bbb", "local_abc.json")
++	if got != string(ccdStripLocalFields([]byte(rec))) {
++		t.Errorf("record content mismatch:\ngot  %s\nwant normalized %s", got, rec)
++	}
++}
++
++// When both sides hold the same record, the one with the higher
++// lastActivityAt wins in both directions.
++func TestCCDNewerRecordWins(t *testing.T) {
++	store := newMockStorage()
++	machineA, ccdA := newCCDMachine(t, store, "install-aaa")
++	machineB, ccdB := newCCDMachine(t, store, "install-bbb")
++	ctx := context.Background()
++
++	older := ccdRecord("local_abc", "title v1", 1000)
++	newer := ccdRecord("local_abc", "title v2", 2000)
++
++	// A pushes the newer state first.
++	writeCCDRecord(t, ccdA, "install-aaa", "local_abc.json", newer)
++	writeFile(t, machineA.claudeDir, "CLAUDE.md", "# a")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++
++	// B holds an older copy; a pull must overwrite it with the newer one.
++	writeCCDRecord(t, ccdB, "install-bbb", "local_abc.json", older)
++	if _, err := machineB.syncer.Pull(ctx); err != nil {
++		t.Fatalf("B pull: %v", err)
++	}
++	if got := readCCDRecord(t, ccdB, "install-bbb", "local_abc.json"); got != string(ccdStripLocalFields([]byte(newer))) {
++		t.Errorf("pull did not adopt newer remote record: %s", got)
++	}
++
++	// B now regresses its copy to the older record; a push must NOT clobber
++	// the newer remote copy.
++	writeCCDRecord(t, ccdB, "install-bbb", "local_abc.json", older)
++	if _, err := machineB.syncer.Push(ctx); err != nil {
++		t.Fatalf("B push: %v", err)
++	}
++	if _, err := machineA.syncer.Pull(ctx); err != nil {
++		t.Fatalf("A pull: %v", err)
++	}
++	if got := readCCDRecord(t, ccdA, "install-aaa", "local_abc.json"); got != newer {
++		t.Errorf("older record clobbered the newer remote copy:\n%s", got)
++	}
++}
++
++// Deleting a record locally (or having none) must never delete bucket
++// records: the registry only grows, like history.
++func TestCCDPushDoesNotDeleteRemoteRecords(t *testing.T) {
++	store := newMockStorage()
++	machineA, ccdA := newCCDMachine(t, store, "install-aaa")
++	ctx := context.Background()
++
++	writeCCDRecord(t, ccdA, "install-aaa", "local_abc.json", ccdRecord("local_abc", "keep me", 1000))
++	writeFile(t, machineA.claudeDir, "CLAUDE.md", "# a")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("push 1: %v", err)
++	}
++
++	if err := os.Remove(filepath.Join(ccdA, "install-aaa", testOrg, "local_abc.json")); err != nil {
++		t.Fatal(err)
++	}
++	writeFile(t, machineA.claudeDir, "CLAUDE.md", "# a2")
++	res, err := machineA.syncer.Push(ctx)
++	if err != nil {
++		t.Fatalf("push 2: %v", err)
++	}
++	for _, d := range res.Deleted {
++		if strings.Contains(d, "local_abc") {
++			t.Errorf("ccd record deleted remotely: %s", d)
++		}
++	}
++	if _, err := store.Head(ctx, "_ccd-sessions/"+testOrg+"/local_abc.json"); err != nil {
++		t.Errorf("bucket record deleted: %v", err)
++	}
++}
++
++// A machine without a desktop-app store (no install dir) must sync normally
++// and simply skip the feature.
++func TestCCDSyncSkippedWithoutStore(t *testing.T) {
++	store := newMockStorage()
++	machine := newTestMachine(t, store) // no SetCCDSessionsDir
++	ctx := context.Background()
++
++	writeFile(t, machine.claudeDir, "CLAUDE.md", "# a")
++	if _, err := machine.syncer.Push(ctx); err != nil {
++		t.Fatalf("push: %v", err)
++	}
++	if _, err := machine.syncer.Pull(ctx); err != nil {
++		t.Fatalf("pull: %v", err)
++	}
++}
++
++// Only local_*.json files are session records; anything else in the store
++// directory stays local.
++func TestCCDOnlySessionRecordsSync(t *testing.T) {
++	store := newMockStorage()
++	machineA, ccdA := newCCDMachine(t, store, "install-aaa")
++	ctx := context.Background()
++
++	writeCCDRecord(t, ccdA, "install-aaa", "local_abc.json", ccdRecord("local_abc", "real", 1000))
++	writeCCDRecord(t, ccdA, "install-aaa", "notes.txt", "junk")
++	writeFile(t, machineA.claudeDir, "CLAUDE.md", "# a")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("push: %v", err)
++	}
++
++	if _, err := store.Head(ctx, "_ccd-sessions/"+testOrg+"/local_abc.json"); err != nil {
++		t.Errorf("session record not uploaded: %v", err)
++	}
++	if _, err := store.Head(ctx, "_ccd-sessions/"+testOrg+"/notes.txt"); err == nil {
++		t.Error("non-record file was uploaded")
++	}
++}
++
++// When two install dirs (reinstalls) hold the same record, the LWW winner is
++// pushed — not whichever directory sorts last.
++func TestCCDInstallDirCollisionKeepsNewest(t *testing.T) {
++	store := newMockStorage()
++	machine, ccdDir := newCCDMachine(t, store, "install-aaa")
++	ctx := context.Background()
++
++	if err := os.MkdirAll(filepath.Join(ccdDir, "install-zzz", testOrg), 0700); err != nil {
++		t.Fatal(err)
++	}
++	writeCCDRecord(t, ccdDir, "install-aaa", "local_abc.json", ccdRecord("local_abc", "newest", 2000))
++	writeCCDRecord(t, ccdDir, "install-zzz", "local_abc.json", ccdRecord("local_abc", "stale", 1000))
++
++	writeFile(t, machine.claudeDir, "CLAUDE.md", "# a")
++	if _, err := machine.syncer.Push(ctx); err != nil {
++		t.Fatalf("push: %v", err)
++	}
++
++	other, otherDir := newCCDMachine(t, store, "install-bbb")
++	if _, err := other.syncer.Pull(ctx); err != nil {
++		t.Fatalf("pull: %v", err)
++	}
++	got := readCCDRecord(t, otherDir, "install-bbb", "local_abc.json")
++	if !strings.Contains(got, "newest") {
++		t.Errorf("stale install-dir copy won the push: %s", got)
++	}
++}
++
++// A crafted remote key must not be able to write outside the session store:
++// org and file segments come from the bucket, which the threat model treats
++// as hostile.
++func TestCCDPullRejectsTraversalKeys(t *testing.T) {
++	store := newMockStorage()
++	machine, ccdDir := newCCDMachine(t, store, "install-aaa")
++	ctx := context.Background()
++
++	// Plant hostile keys directly in the bucket, encrypted with the right key
++	// (a compromised bucket + leaked passphrase scenario).
++	payload := []byte(`{"lastActivityAt":99999999}`)
++	for _, key := range []string{
++		"_ccd-sessions/../local_evil.json",
++		"_ccd-sessions/..\\../local_evil2.json",
++		"_ccd-sessions/org/../local_evil3.json",
++	} {
++		compressed, _ := gzipCompress(payload)
++		encrypted, err := machine.syncer.encryptor.Encrypt(compressed)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := store.Upload(ctx, key, encrypted); err != nil {
++			t.Fatal(err)
++		}
++	}
++
++	if _, err := machine.syncer.Pull(ctx); err != nil {
++		t.Fatalf("pull: %v", err)
++	}
++
++	// Nothing may exist outside <ccdDir>/install-aaa/<org>/ — in particular
++	// nothing at the install dir's parent or inside install-aaa directly.
++	if _, err := os.Stat(filepath.Join(ccdDir, "install-aaa", "local_evil.json")); err == nil {
++		t.Error("traversal key wrote into the install dir")
++	}
++	if _, err := os.Stat(filepath.Join(ccdDir, "local_evil.json")); err == nil {
++		t.Error("traversal key escaped to the store root")
++	}
++	if _, err := os.Stat(filepath.Join(filepath.Dir(ccdDir), "local_evil.json")); err == nil {
++		t.Error("traversal key escaped the store entirely")
++	}
++	for _, n := range []string{"local_evil2.json", "local_evil3.json"} {
++		matches, _ := filepath.Glob(filepath.Join(filepath.Dir(ccdDir), "**", n))
++		if len(matches) > 0 {
++			t.Errorf("hostile key %s materialized: %v", n, matches)
++		}
++	}
++}
+diff --git a/internal/sync/debris_test.go b/internal/sync/debris_test.go
+new file mode 100644
+index 0000000..77d6d1f
+--- /dev/null
++++ b/internal/sync/debris_test.go
+@@ -0,0 +1,86 @@
++package sync
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/tawanorg/claude-sync/internal/config"
++)
++
++func TestIsExcludedSkipsPerMachineDebris(t *testing.T) {
++	s := &Syncer{cfg: &config.Config{}}
++
++	excluded := []string{
++		"tasks/6bf39315-3333-4394-86bb-2d57f8759b5a/.lock",
++		".lock",
++		"projects/p1/sess.jsonl.conflict.20260729-145427",
++		"tasks/x/3.json.conflict.20260101-000000",
++	}
++	for _, p := range excluded {
++		if !s.isExcluded(p) {
++			t.Errorf("expected %q to be excluded as per-machine debris", p)
++		}
++	}
++
++	// Real data must never be caught. The .conflict rule in particular is
++	// anchored on the exact timestamp format this tool writes, because
++	// excluding an already-tracked file prunes it from the bucket on the
++	// next push — a loose pattern would delete user data remotely.
++	kept := []string{
++		"projects/p1/sess.jsonl",
++		"tasks/x/3.json",
++		"CLAUDE.md",
++		"projects/notes.conflict.md",              // ".conflict." but not our artifact
++		"projects/p1/my.conflict.2026.txt",        // wrong timestamp shape
++		"projects/p1/sess.jsonl.conflict.2026072", // truncated timestamp
++		"projects/lockfiles/package.lock",         // ends in .lock but is not a bare .lock
++		"projects/p1/.lockfile",
++	}
++	for _, p := range kept {
++		if s.isExcluded(p) {
++			t.Errorf("expected %q NOT to be excluded", p)
++		}
++	}
++}
++
++func TestIsExcludedStillHonorsUserPatterns(t *testing.T) {
++	s := &Syncer{cfg: &config.Config{Exclude: []string{"**/*.tmp"}}}
++	if !s.isExcluded("projects/p1/scratch.tmp") {
++		t.Error("user exclude patterns must still apply")
++	}
++	if s.isExcluded("projects/p1/keep.txt") {
++		t.Error("unrelated file must not be excluded")
++	}
++}
++
++func TestPushSkipsDebrisFiles(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", "{\"uuid\":\"u1\"}\n")
++	writeFile(t, env.claudeDir, "tasks/t1/.lock", "")
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl.conflict.20260729-145427", "stale remote copy\n")
++
++	result, err := env.syncer.Push(ctx)
++	if err != nil {
++		t.Fatalf("Push failed: %v", err)
++	}
++	if len(result.Uploaded) != 1 || result.Uploaded[0] != "projects/p1/sess.jsonl" {
++		t.Errorf("only the transcript should upload, got %v", result.Uploaded)
++	}
++
++	objs, err := env.store.ListUserObjects(ctx)
++	if err != nil {
++		t.Fatalf("list: %v", err)
++	}
++	if len(objs) != 1 {
++		t.Errorf("expected 1 remote object, got %d: %v", len(objs), objs)
++	}
++
++	// The debris stays on disk; it is simply never published.
++	if _, err := os.Stat(filepath.Join(env.claudeDir, "tasks", "t1", ".lock")); err != nil {
++		t.Errorf("local .lock must not be removed: %v", err)
++	}
++}
+diff --git a/internal/sync/fastforward.go b/internal/sync/fastforward.go
+new file mode 100644
+index 0000000..6dfb86a
+--- /dev/null
++++ b/internal/sync/fastforward.go
+@@ -0,0 +1,54 @@
++package sync
++
++import (
++	"bytes"
++	"strings"
++)
++
++// PrefixRelation classifies how the local and remote payloads of one file
++// relate, for append-only files where "one side is simply ahead" must not be
++// treated as a conflict.
++//
++// Claude Code session transcripts (*.jsonl) are append-only. In a corpus of 92
++// conflict artifacts collected across three synced machines, every single one
++// was a strict byte-prefix relation: one side was exactly the other plus an
++// appended tail. Byte comparison is exact for this file class — it cannot
++// misorder records, because it never interleaves content.
++type PrefixRelation int
++
++const (
++	// PrefixNone means neither payload contains the other: genuinely diverged.
++	PrefixNone PrefixRelation = iota
++	// PrefixEqual means the payloads are byte-identical.
++	PrefixEqual
++	// PrefixLocalAhead means remote is a strict prefix of local: local has an
++	// appended tail the bucket has not seen.
++	PrefixLocalAhead
++	// PrefixRemoteAhead means local is a strict prefix of remote: the local
++	// copy is truncated relative to the bucket.
++	PrefixRemoteAhead
++)
++
++// ClassifyPrefix reports how local relates to remote byte-wise: identical, one
++// a strict prefix of the other, or diverged. Equality is checked first, so the
++// two Ahead results always denote STRICT extension.
++func ClassifyPrefix(local, remote []byte) PrefixRelation {
++	switch {
++	case bytes.Equal(local, remote):
++		return PrefixEqual
++	case bytes.HasPrefix(remote, local):
++		return PrefixRemoteAhead
++	case bytes.HasPrefix(local, remote):
++		return PrefixLocalAhead
++	default:
++		return PrefixNone
++	}
++}
++
++// isSessionJSONL reports whether relativePath is an append-only session
++// transcript eligible for fast-forward resolution. history.jsonl is a single
++// file shared by every machine with different merge semantics, so only the
++// root one is excluded; a nested projects/**/history.jsonl is a session file.
++func isSessionJSONL(relativePath string) bool {
++	return strings.HasSuffix(relativePath, ".jsonl") && relativePath != HistoryFile
++}
+diff --git a/internal/sync/fastforward_test.go b/internal/sync/fastforward_test.go
+new file mode 100644
+index 0000000..7314281
+--- /dev/null
++++ b/internal/sync/fastforward_test.go
+@@ -0,0 +1,284 @@
++package sync
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestClassifyPrefix(t *testing.T) {
++	tests := []struct {
++		name          string
++		local, remote string
++		want          PrefixRelation
++	}{
++		{"equal", "a\nb\n", "a\nb\n", PrefixEqual},
++		{"remote ahead (truncated local)", "a\nb\n", "a\nb\nc\n", PrefixRemoteAhead},
++		{"local ahead (stale remote)", "a\nb\nc\n", "a\nb\n", PrefixLocalAhead},
++		{"diverged same length", "a\nb\nx\n", "a\nb\ny\n", PrefixNone},
++		{"diverged, remote longer", "a\nx\n", "a\nb\nc\n", PrefixNone},
++		{"diverged, local longer", "a\nx\ny\n", "a\nb\n", PrefixNone},
++		{"diverged at byte 0", "x\n", "y\nz\n", PrefixNone},
++		{"both empty", "", "", PrefixEqual},
++		{"empty local, nonempty remote", "", "a\n", PrefixRemoteAhead},
++		{"nonempty local, empty remote", "a\n", "", PrefixLocalAhead},
++		// A live-session torn write: local ends mid-line, remote completed it.
++		{"torn trailing line is still a prefix", `{"a":1}` + "\n" + `{"b`, `{"a":1}` + "\n" + `{"b":2}` + "\n", PrefixRemoteAhead},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := ClassifyPrefix([]byte(tt.local), []byte(tt.remote)); got != tt.want {
++				t.Errorf("ClassifyPrefix() = %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
++
++func TestIsSessionJSONL(t *testing.T) {
++	tests := []struct {
++		path string
++		want bool
++	}{
++		{"projects/p1/sess.jsonl", true},
++		{"projects/p1/subagents/agent-abc.jsonl", true},
++		{"projects/p1/history.jsonl", true}, // only the ROOT history.jsonl is excluded
++		{"history.jsonl", false},
++		{"tasks/x/3.json", false},
++		{"CLAUDE.md", false},
++		{"projects/p1/sess.jsonl.conflict.20260729-145427", false},
++	}
++	for _, tt := range tests {
++		if got := isSessionJSONL(tt.path); got != tt.want {
++			t.Errorf("isSessionJSONL(%q) = %v, want %v", tt.path, got, tt.want)
++		}
++	}
++}
++
++// pushThenDesync seeds state with a real Push of v1, then rewrites the local
++// file to localV and the bucket copy to remoteV with a LastModified in the
++// future, reproducing the "both sides changed since state" trigger.
++func pushThenDesync(t *testing.T, env *testEnv, name, v1, localV, remoteV string) {
++	t.Helper()
++	ctx := context.Background()
++	writeFile(t, env.claudeDir, name, v1)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("seed push failed: %v", err)
++	}
++	writeFile(t, env.claudeDir, name, localV)
++
++	compressed, err := gzipCompress([]byte(remoteV))
++	if err != nil {
++		t.Fatalf("compress: %v", err)
++	}
++	encrypted, err := env.syncer.encryptor.Encrypt(compressed)
++	if err != nil {
++		t.Fatalf("encrypt: %v", err)
++	}
++	key := env.syncer.remoteKey(name)
++	if err := env.store.Upload(ctx, key, encrypted); err != nil {
++		t.Fatalf("upload: %v", err)
++	}
++	env.store.mu.Lock()
++	obj := env.store.objects[key]
++	obj.lastModified = time.Now().Add(2 * time.Second)
++	env.store.objects[key] = obj
++	env.store.mu.Unlock()
++}
++
++func conflictFilesIn(t *testing.T, dir string) []string {
++	t.Helper()
++	var found []string
++	_ = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
++		if err == nil && !info.IsDir() && strings.Contains(filepath.Base(p), ".conflict.") {
++			found = append(found, p)
++		}
++		return nil
++	})
++	return found
++}
++
++func TestPullFastForwardsTruncatedLocal(t *testing.T) {
++	env := setupTestEnv(t)
++	mid := "{\"uuid\":\"u1\"}\n{\"uuid\":\"u2\"}\n"
++	trunc := "{\"uuid\":\"u1\"}\n"
++	full := "{\"uuid\":\"u1\"}\n{\"uuid\":\"u2\"}\n{\"uuid\":\"u3\"}\n"
++	// Seed with mid so the truncated local differs from state, which is what
++	// puts the file on the both-changed path at all.
++	pushThenDesync(t, env, "projects/p1/sess.jsonl", mid, trunc, full)
++
++	result, err := env.syncer.Pull(context.Background())
++	if err != nil {
++		t.Fatalf("Pull failed: %v", err)
++	}
++	if len(result.Conflicts) != 0 {
++		t.Errorf("expected no conflicts, got %v", result.Conflicts)
++	}
++	if got := readFile(t, env.claudeDir, "projects/p1/sess.jsonl"); got != full {
++		t.Errorf("local not fast-forwarded:\ngot  %q\nwant %q", got, full)
++	}
++	if cf := conflictFilesIn(t, env.claudeDir); len(cf) != 0 {
++		t.Errorf("a .conflict file was written for a fast-forward: %v", cf)
++	}
++	if len(result.Downloaded) != 1 {
++		t.Errorf("fast-forward should count as downloaded, got %v", result.Downloaded)
++	}
++}
++
++func TestPullKeepsLocalWhenAheadWithoutConflictFile(t *testing.T) {
++	env := setupTestEnv(t)
++	base := "{\"uuid\":\"u1\"}\n"
++	ahead := base + "{\"uuid\":\"u2\"}\n"
++	pushThenDesync(t, env, "projects/p1/sess.jsonl", base, ahead, base)
++
++	result, err := env.syncer.Pull(context.Background())
++	if err != nil {
++		t.Fatalf("Pull failed: %v", err)
++	}
++	if len(result.Conflicts) != 0 {
++		t.Errorf("expected no conflicts, got %v", result.Conflicts)
++	}
++	if got := readFile(t, env.claudeDir, "projects/p1/sess.jsonl"); got != ahead {
++		t.Errorf("local was modified, want untouched:\ngot %q", got)
++	}
++	if cf := conflictFilesIn(t, env.claudeDir); len(cf) != 0 {
++		t.Errorf(".conflict written when local was simply ahead: %v", cf)
++	}
++}
++
++func TestPullMergesDivergedSessionInsteadOfConflict(t *testing.T) {
++	env := setupTestEnv(t)
++	base := `{"uuid":"a","type":"user"}` + "\n"
++	local := base + `{"uuid":"b","type":"assistant","parentUuid":"a"}` + "\n"
++	remote := base + `{"uuid":"c","type":"assistant","parentUuid":"a"}` + "\n"
++	pushThenDesync(t, env, "projects/p1/sess.jsonl", base, local, remote)
++
++	result, err := env.syncer.Pull(context.Background())
++	if err != nil {
++		t.Fatalf("Pull failed: %v", err)
++	}
++	if len(result.Conflicts) != 0 {
++		t.Errorf("diverged session should merge, not conflict: %v", result.Conflicts)
++	}
++	got := readFile(t, env.claudeDir, "projects/p1/sess.jsonl")
++	if !strings.HasPrefix(got, local) {
++		t.Errorf("local content must be preserved verbatim as prefix, got %q", got)
++	}
++	if !strings.Contains(got, `"uuid":"c"`) {
++		t.Errorf("remote-only event missing after merge, got %q", got)
++	}
++	if cf := conflictFilesIn(t, env.claudeDir); len(cf) != 0 {
++		t.Errorf(".conflict written for a mergeable divergence: %v", cf)
++	}
++	if len(result.Downloaded) != 1 {
++		t.Errorf("merge should count as downloaded, got %v", result.Downloaded)
++	}
++
++	// Applied idempotency at the pull level: a second pull must be a no-op
++	// for this file (no new conflicts, no duplicate appends).
++	before := readFile(t, env.claudeDir, "projects/p1/sess.jsonl")
++	result2, err := env.syncer.Pull(context.Background())
++	if err != nil {
++		t.Fatalf("second Pull failed: %v", err)
++	}
++	if len(result2.Conflicts) != 0 {
++		t.Errorf("second pull must not conflict, got %v", result2.Conflicts)
++	}
++	if after := readFile(t, env.claudeDir, "projects/p1/sess.jsonl"); after != before {
++		t.Errorf("second pull changed the file:\nbefore %q\nafter  %q", before, after)
++	}
++}
++
++func TestPullNonJSONLConflictBehaviorUnchanged(t *testing.T) {
++	env := setupTestEnv(t)
++	pushThenDesync(t, env, "CLAUDE.md", "v1", "local-change", "remote-change")
++
++	result, err := env.syncer.Pull(context.Background())
++	if err != nil {
++		t.Fatalf("Pull failed: %v", err)
++	}
++	if len(result.Conflicts) != 1 {
++		t.Fatalf("expected 1 conflict, got %v", result.Conflicts)
++	}
++	if got := readFile(t, env.claudeDir, "CLAUDE.md"); got != "local-change" {
++		t.Errorf("local must be kept on real conflict, got %q", got)
++	}
++	if cf := conflictFilesIn(t, env.claudeDir); len(cf) != 1 {
++		t.Errorf("expected exactly one .conflict file, got %v", cf)
++	}
++}
++
++func TestPushSkipsTruncatedJSONLWhenRemoteIsFuller(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++	full := "{\"uuid\":\"u1\"}\n{\"uuid\":\"u2\"}\n{\"uuid\":\"u3\"}\n"
++	trunc := "{\"uuid\":\"u1\"}\n"
++
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", full)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("seed push failed: %v", err)
++	}
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", trunc)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("push failed: %v", err)
++	}
++
++	remote, err := env.syncer.fetchDecoded(ctx, "projects/p1/sess.jsonl",
++		env.syncer.remoteKey("projects/p1/sess.jsonl"))
++	if err != nil {
++		t.Fatalf("fetch remote: %v", err)
++	}
++	if string(remote) != full {
++		t.Errorf("truncated local clobbered fuller remote:\ngot  %q\nwant %q", string(remote), full)
++	}
++}
++
++func TestPushUploadsGenuinelyRewrittenSmallerJSONL(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++	v1 := "{\"uuid\":\"u1\"}\n{\"uuid\":\"u2\"}\n"
++	rewritten := "{\"uuid\":\"u9\"}\n" // smaller but NOT a prefix: a legitimate rewrite
++
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", v1)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("seed push failed: %v", err)
++	}
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", rewritten)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("push failed: %v", err)
++	}
++
++	remote, err := env.syncer.fetchDecoded(ctx, "projects/p1/sess.jsonl",
++		env.syncer.remoteKey("projects/p1/sess.jsonl"))
++	if err != nil {
++		t.Fatalf("fetch remote: %v", err)
++	}
++	if string(remote) != rewritten {
++		t.Errorf("legitimate rewrite was blocked:\ngot  %q\nwant %q", string(remote), rewritten)
++	}
++}
++
++func TestPushSkipDoesNotCountAsUpload(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++	full := "{\"uuid\":\"u1\"}\n{\"uuid\":\"u2\"}\n"
++	trunc := "{\"uuid\":\"u1\"}\n"
++
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", full)
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("seed push failed: %v", err)
++	}
++	writeFile(t, env.claudeDir, "projects/p1/sess.jsonl", trunc)
++	result, err := env.syncer.Push(ctx)
++	if err != nil {
++		t.Fatalf("push failed: %v", err)
++	}
++	if len(result.Uploaded) != 0 {
++		t.Errorf("skip must not count as upload, got %v", result.Uploaded)
++	}
++	if len(result.Errors) != 0 {
++		t.Errorf("skip must not count as error, got %v", result.Errors)
++	}
++}
+diff --git a/internal/sync/history_merge.go b/internal/sync/history_merge.go
+new file mode 100644
+index 0000000..b9890e1
+--- /dev/null
++++ b/internal/sync/history_merge.go
+@@ -0,0 +1,117 @@
++package sync
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"os"
++)
++
++// MergeHistoryPayloads unions two history.jsonl payloads.
++//
++// history.jsonl is append-only per machine, so a two-way union is a complete
++// merge. The local payload is preserved verbatim as the prefix of the result —
++// including unparseable lines (torn writes) and unknown record shapes — and is
++// never reordered or rewritten; remote lines the local payload lacks are
++// returned in addedLines and appended after it. This makes the merge
++// idempotent (Merge(x, x) adds nothing) and lets callers apply it to the
++// local file with O_APPEND instead of a rewrite, so a concurrent appender
++// (a live Claude Code session) can never lose lines to a stale-read rewrite.
++//
++// Remote lines are dropped as duplicates when either:
++//   - an identical raw line exists locally (exact-byte multiset match — this
++//     is what dedupes blank submissions and unknown-shape records, which have
++//     no prompt signature and would otherwise multiply on every cycle), or
++//   - they parse to a prompt whose sessionId+display matches a local prompt
++//     within historyDedupeWindowMs (same rule as RebuildHistory; the local
++//     line wins and keeps its pastedContents).
++//
++// Remote lines that fail to parse and have no exact local match are dropped,
++// not propagated.
++func MergeHistoryPayloads(local, remote []byte) (merged []byte, addedLines [][]byte, err error) {
++	type promptSig struct{ session, display string }
++	seen := make(map[promptSig][]int64)
++	rawCount := make(map[string]int)
++
++	err = forEachLine(bytes.NewReader(local), func(line []byte) {
++		rawCount[string(line)]++
++		var entry HistoryEntry
++		if json.Unmarshal(line, &entry) != nil || entry.Display == "" {
++			return
++		}
++		sig := promptSig{entry.SessionID, entry.Display}
++		seen[sig] = append(seen[sig], entry.Timestamp)
++	})
++	if err != nil {
++		return nil, nil, fmt.Errorf("parsing local history: %w", err)
++	}
++
++	err = forEachLine(bytes.NewReader(remote), func(line []byte) {
++		if rawCount[string(line)] > 0 {
++			rawCount[string(line)]--
++			return
++		}
++		var entry HistoryEntry
++		if json.Unmarshal(line, &entry) != nil {
++			return
++		}
++		if entry.Display != "" {
++			sig := promptSig{entry.SessionID, entry.Display}
++			if withinWindow(seen[sig], entry.Timestamp) {
++				return
++			}
++			seen[sig] = append(seen[sig], entry.Timestamp)
++		}
++		raw := make([]byte, len(line))
++		copy(raw, line)
++		addedLines = append(addedLines, raw)
++	})
++	if err != nil {
++		return nil, nil, fmt.Errorf("parsing remote history: %w", err)
++	}
++
++	if len(addedLines) == 0 {
++		return local, nil, nil
++	}
++
++	var buf bytes.Buffer
++	buf.Write(local)
++	if len(local) > 0 && local[len(local)-1] != '\n' {
++		buf.WriteByte('\n')
++	}
++	for _, line := range addedLines {
++		buf.Write(line)
++		buf.WriteByte('\n')
++	}
++	return buf.Bytes(), addedLines, nil
++}
++
++// appendHistoryLines appends lines to the history file with O_APPEND, never
++// truncating or rewriting existing content: lines a live Claude Code session
++// appends concurrently are preserved, and a crash mid-append can at worst
++// leave one partial trailing line (which later merges keep verbatim).
++func appendHistoryLines(path string, lines [][]byte) error {
++	var buf bytes.Buffer
++	if data, err := os.ReadFile(path); err == nil {
++		if len(data) > 0 && data[len(data)-1] != '\n' {
++			buf.WriteByte('\n')
++		}
++	} else if !os.IsNotExist(err) {
++		return err
++	}
++	for _, line := range lines {
++		buf.Write(line)
++		buf.WriteByte('\n')
++	}
++
++	// Transcripts can contain secrets echoed by tools: keep them user-only
++	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
++	if err != nil {
++		return err
++	}
++	if _, err := f.Write(buf.Bytes()); err != nil {
++		_ = f.Close()
++		return err
++	}
++	return f.Close()
++}
+diff --git a/internal/sync/history_merge_test.go b/internal/sync/history_merge_test.go
+new file mode 100644
+index 0000000..fd4838b
+--- /dev/null
++++ b/internal/sync/history_merge_test.go
+@@ -0,0 +1,505 @@
++package sync
++
++import (
++	"context"
++	"errors"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"testing"
++
++	"github.com/tawanorg/claude-sync/internal/config"
++	"github.com/tawanorg/claude-sync/internal/crypto"
++	"github.com/tawanorg/claude-sync/internal/storage"
++)
++
++func historyLine(display string, ts int64, session string) string {
++	return `{"display":"` + display + `","pastedContents":{},"timestamp":` +
++		strconv.FormatInt(ts, 10) + `,"project":"/home/u/proj","sessionId":"` + session + `"}`
++}
++
++func TestMergeHistoryPayloadsUnionsDistinctEntries(t *testing.T) {
++	local := historyLine("local prompt", 2000, "s-local") + "\n"
++	remote := historyLine("remote prompt", 1000, "s-remote") + "\n"
++
++	merged, added, err := MergeHistoryPayloads([]byte(local), []byte(remote))
++	if err != nil {
++		t.Fatalf("MergeHistoryPayloads failed: %v", err)
++	}
++	if len(added) != 1 {
++		t.Errorf("added = %d, want 1", len(added))
++	}
++	out := string(merged)
++	if !strings.Contains(out, "local prompt") || !strings.Contains(out, "remote prompt") {
++		t.Errorf("merged payload missing entries:\n%s", out)
++	}
++}
++
++// Local bytes are the prefix of the merge output, verbatim — the merge never
++// rewrites or reorders what the local file already contains, so a concurrent
++// appender or an unparseable line can never be destroyed by a rewrite.
++func TestMergeHistoryPayloadsPreservesLocalVerbatimAndAppends(t *testing.T) {
++	unparseable := `{"display":"torn line without closing brace`
++	local := historyLine("newer local", 5000, "s1") + "\n" + unparseable + "\n"
++	remote := historyLine("older remote", 1000, "s2") + "\n"
++
++	merged, added, err := MergeHistoryPayloads([]byte(local), []byte(remote))
++	if err != nil {
++		t.Fatalf("MergeHistoryPayloads failed: %v", err)
++	}
++	if len(added) != 1 {
++		t.Errorf("added = %d, want 1", len(added))
++	}
++	out := string(merged)
++	if !strings.HasPrefix(out, local) {
++		t.Errorf("local payload is not a verbatim prefix of the merge output:\n%s", out)
++	}
++	if !strings.Contains(out, unparseable) {
++		t.Errorf("unparseable local line dropped:\n%s", out)
++	}
++	if strings.Index(out, "older remote") < strings.Index(out, "newer local") {
++		t.Errorf("remote entries must be appended after local content:\n%s", out)
++	}
++}
++
++// Merging a payload with itself must be a no-op: this is the invariant that
++// prevents entries from multiplying as the same content cycles between
++// machines and the bucket.
++func TestMergeHistoryPayloadsIsIdempotent(t *testing.T) {
++	payload := historyLine("prompt one", 1000, "s1") + "\n" +
++		`{"display":"","pastedContents":{},"timestamp":1500,"project":"/p","sessionId":"s1"}` + "\n" +
++		`{"someFutureField":true}` + "\n" +
++		historyLine("prompt two", 2000, "s2") + "\n"
++
++	merged, added, err := MergeHistoryPayloads([]byte(payload), []byte(payload))
++	if err != nil {
++		t.Fatalf("MergeHistoryPayloads failed: %v", err)
++	}
++	if len(added) != 0 {
++		t.Errorf("Merge(x, x) added %d lines, want 0: %q", len(added), added)
++	}
++	if string(merged) != payload {
++		t.Errorf("Merge(x, x) != x:\ngot  %q\nwant %q", merged, payload)
++	}
++}
++
++// Empty-display lines (blank submissions) and JSON lines of unknown shape
++// have no sessionId+display signature, so they dedupe by exact raw bytes.
++// Without this they would be re-added on every sync cycle and multiply.
++func TestMergeHistoryPayloadsDedupesEmptyDisplayByRawBytes(t *testing.T) {
++	blank := `{"display":"","pastedContents":{},"timestamp":500,"project":"/p","sessionId":"s0"}`
++	local := blank + "\n" + historyLine("real prompt", 1000, "s1") + "\n"
++	remote := blank + "\n" + historyLine("remote prompt", 2000, "s2") + "\n"
++
++	merged, added, err := MergeHistoryPayloads([]byte(local), []byte(remote))
++	if err != nil {
++		t.Fatalf("MergeHistoryPayloads failed: %v", err)
++	}
++	if len(added) != 1 {
++		t.Errorf("added = %d, want 1 (only the remote prompt): %q", len(added), added)
++	}
++	if strings.Count(string(merged), `"sessionId":"s0"`) != 1 {
++		t.Errorf("blank-submission line duplicated:\n%s", merged)
++	}
++}
++
++func TestMergeHistoryPayloadsDedupesAndKeepsLocalRaw(t *testing.T) {
++	// Same prompt on both sides (same session + display, close timestamps);
++	// the local line carries a payload the remote line lacks and must win.
++	local := `{"display":"shared","pastedContents":{"1":{"content":"KEEP"}},"timestamp":3000,"project":"/p","sessionId":"s1"}` + "\n"
++	remote := historyLine("shared", 3500, "s1") + "\n" +
++		historyLine("remote only", 9000, "s2") + "\n"
++
++	merged, added, err := MergeHistoryPayloads([]byte(local), []byte(remote))
++	if err != nil {
++		t.Fatalf("MergeHistoryPayloads failed: %v", err)
++	}
++	if len(added) != 1 {
++		t.Errorf("added = %d, want 1 (only the remote-only entry)", len(added))
++	}
++	out := string(merged)
++	if strings.Count(out, `"shared"`) != 1 {
++		t.Errorf("shared entry duplicated:\n%s", out)
++	}
++	if !strings.Contains(out, "KEEP") {
++		t.Errorf("local raw line was not preserved verbatim:\n%s", out)
++	}
++	if !strings.Contains(out, "remote only") {
++		t.Errorf("remote-only entry missing:\n%s", out)
++	}
++}
++
++func TestMergeHistoryPayloadsEmptySides(t *testing.T) {
++	line := historyLine("only", 1000, "s1") + "\n"
++
++	merged, added, err := MergeHistoryPayloads(nil, []byte(line))
++	if err != nil {
++		t.Fatalf("empty local: %v", err)
++	}
++	if len(added) != 1 || !strings.Contains(string(merged), "only") {
++		t.Errorf("empty local: added=%d merged=%q", len(added), merged)
++	}
++
++	merged, added, err = MergeHistoryPayloads([]byte(line), nil)
++	if err != nil {
++		t.Fatalf("empty remote: %v", err)
++	}
++	if len(added) != 0 || !strings.Contains(string(merged), "only") {
++		t.Errorf("empty remote: added=%d merged=%q", len(added), merged)
++	}
++}
++
++// newTestMachine builds a Syncer with its own claude/state dirs but a shared
++// mock storage, simulating one of several machines syncing the same bucket.
++// All machines derive the same key from the same passphrase, as in real use.
++func newTestMachine(t *testing.T, store storage.Storage) *testEnv {
++	t.Helper()
++	tmpDir := t.TempDir()
++	claudeDir := filepath.Join(tmpDir, ".claude")
++	stateDir := filepath.Join(tmpDir, ".claude-sync")
++	if err := os.MkdirAll(claudeDir, 0755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.MkdirAll(stateDir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	keyPath := filepath.Join(stateDir, "age-key.txt")
++	if err := crypto.GenerateKeyFromPassphrase(keyPath, "test-passphrase-shared-1"); err != nil {
++		t.Fatal(err)
++	}
++	enc, err := crypto.NewEncryptor(keyPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	state, err := LoadStateFromDir(stateDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return &testEnv{
++		syncer: &Syncer{
++			storage:   store,
++			encryptor: enc,
++			state:     state,
++			claudeDir: claudeDir,
++			quiet:     true,
++			cfg:       &config.Config{Scope: config.ScopeFull},
++		},
++		store:     nil,
++		claudeDir: claudeDir,
++		stateDir:  stateDir,
++	}
++}
++
++func assertNoConflictFiles(t *testing.T, claudeDir string) {
++	t.Helper()
++	matches, err := filepath.Glob(filepath.Join(claudeDir, "*.conflict.*"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(matches) > 0 {
++		t.Errorf("conflict files created for history.jsonl: %v", matches)
++	}
++}
++
++func TestPushMergesRemoteHistoryIntoUpload(t *testing.T) {
++	store := newMockStorage()
++	machineA := newTestMachine(t, store)
++	machineB := newTestMachine(t, store)
++	ctx := context.Background()
++
++	writeFile(t, machineA.claudeDir, HistoryFile, historyLine("prompt from A", 1000, "s-a")+"\n")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++
++	// B pushes its own history with no knowledge of A's. Without merge-on-push
++	// this replaces A's entries in the bucket (last-writer-wins).
++	writeFile(t, machineB.claudeDir, HistoryFile, historyLine("prompt from B", 2000, "s-b")+"\n")
++	if _, err := machineB.syncer.Push(ctx); err != nil {
++		t.Fatalf("B push: %v", err)
++	}
++
++	// Merge-on-push must also fold A's entries into B's local file.
++	bLocal := readFile(t, machineB.claudeDir, HistoryFile)
++	if !strings.Contains(bLocal, "prompt from A") || !strings.Contains(bLocal, "prompt from B") {
++		t.Errorf("B's local history is not the union after push:\n%s", bLocal)
++	}
++
++	// A pulls: the bucket copy must contain the union.
++	res, err := machineA.syncer.Pull(ctx)
++	if err != nil {
++		t.Fatalf("A pull: %v", err)
++	}
++	if len(res.Conflicts) != 0 {
++		t.Errorf("pull reported conflicts: %v", res.Conflicts)
++	}
++	aLocal := readFile(t, machineA.claudeDir, HistoryFile)
++	if !strings.Contains(aLocal, "prompt from A") || !strings.Contains(aLocal, "prompt from B") {
++		t.Errorf("bucket history was clobbered instead of merged:\n%s", aLocal)
++	}
++	assertNoConflictFiles(t, machineA.claudeDir)
++}
++
++func TestPullMergesHistoryOnFirstSync(t *testing.T) {
++	store := newMockStorage()
++	machineA := newTestMachine(t, store)
++	machineB := newTestMachine(t, store)
++	ctx := context.Background()
++
++	writeFile(t, machineA.claudeDir, HistoryFile, historyLine("prompt from A", 1000, "s-a")+"\n")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++
++	// B has pre-existing local history and no sync state (first sync). The
++	// local file is newer than the remote object; it must still be merged,
++	// not skipped and not overwritten.
++	writeFile(t, machineB.claudeDir, HistoryFile, historyLine("prompt from B", 2000, "s-b")+"\n")
++	res, err := machineB.syncer.Pull(ctx)
++	if err != nil {
++		t.Fatalf("B pull: %v", err)
++	}
++	if len(res.Conflicts) != 0 {
++		t.Errorf("pull reported conflicts: %v", res.Conflicts)
++	}
++	bLocal := readFile(t, machineB.claudeDir, HistoryFile)
++	if !strings.Contains(bLocal, "prompt from A") || !strings.Contains(bLocal, "prompt from B") {
++		t.Errorf("first-sync pull did not merge history:\n%s", bLocal)
++	}
++	assertNoConflictFiles(t, machineB.claudeDir)
++}
++
++func TestPullMergesHistoryWhenBothSidesChanged(t *testing.T) {
++	store := newMockStorage()
++	machineA := newTestMachine(t, store)
++	machineB := newTestMachine(t, store)
++	ctx := context.Background()
++
++	// B establishes state, then A pushes more history, then B changes locally:
++	// the classic both-sides-changed case that used to produce a .conflict file.
++	writeFile(t, machineB.claudeDir, HistoryFile, historyLine("B first", 1000, "s-b1")+"\n")
++	if _, err := machineB.syncer.Push(ctx); err != nil {
++		t.Fatalf("B push: %v", err)
++	}
++	writeFile(t, machineA.claudeDir, HistoryFile, historyLine("A first", 2000, "s-a1")+"\n")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++	writeFile(t, machineB.claudeDir, HistoryFile,
++		historyLine("B first", 1000, "s-b1")+"\n"+historyLine("B second", 3000, "s-b2")+"\n")
++
++	res, err := machineB.syncer.Pull(ctx)
++	if err != nil {
++		t.Fatalf("B pull: %v", err)
++	}
++	if len(res.Conflicts) != 0 {
++		t.Errorf("history should merge, not conflict: %v", res.Conflicts)
++	}
++	assertNoConflictFiles(t, machineB.claudeDir)
++
++	bLocal := readFile(t, machineB.claudeDir, HistoryFile)
++	for _, want := range []string{"A first", "B first", "B second"} {
++		if !strings.Contains(bLocal, want) {
++			t.Errorf("merged history missing %q:\n%s", want, bLocal)
++		}
++	}
++
++	// B's next push must publish the union to the bucket.
++	if _, err := machineB.syncer.Push(ctx); err != nil {
++		t.Fatalf("B push 2: %v", err)
++	}
++	if _, err := machineA.syncer.Pull(ctx); err != nil {
++		t.Fatalf("A pull: %v", err)
++	}
++	aLocal := readFile(t, machineA.claudeDir, HistoryFile)
++	for _, want := range []string{"A first", "B first", "B second"} {
++		if !strings.Contains(aLocal, want) {
++			t.Errorf("bucket union missing %q after round-trip:\n%s", want, aLocal)
++		}
++	}
++}
++
++// A fleet-wide cycle must converge: once every machine holds the union,
++// further pushes and pulls must not modify any file or re-add any line.
++func TestHistorySyncCycleConverges(t *testing.T) {
++	store := newMockStorage()
++	machineA := newTestMachine(t, store)
++	machineB := newTestMachine(t, store)
++	ctx := context.Background()
++
++	// Include a blank submission — the classic multiplication trigger.
++	blank := `{"display":"","pastedContents":{},"timestamp":1500,"project":"/p","sessionId":"s-a"}`
++	writeFile(t, machineA.claudeDir, HistoryFile,
++		historyLine("from A", 1000, "s-a")+"\n"+blank+"\n")
++	writeFile(t, machineB.claudeDir, HistoryFile, historyLine("from B", 2000, "s-b")+"\n")
++
++	// Two full sync cycles for each machine.
++	for i := 0; i < 2; i++ {
++		if _, err := machineA.syncer.Push(ctx); err != nil {
++			t.Fatalf("A push %d: %v", i, err)
++		}
++		if _, err := machineB.syncer.Pull(ctx); err != nil {
++			t.Fatalf("B pull %d: %v", i, err)
++		}
++		if _, err := machineB.syncer.Push(ctx); err != nil {
++			t.Fatalf("B push %d: %v", i, err)
++		}
++		if _, err := machineA.syncer.Pull(ctx); err != nil {
++			t.Fatalf("A pull %d: %v", i, err)
++		}
++	}
++
++	for name, dir := range map[string]string{"A": machineA.claudeDir, "B": machineB.claudeDir} {
++		content := readFile(t, dir, HistoryFile)
++		if got := strings.Count(content, `"timestamp":1500`); got != 1 {
++			t.Errorf("machine %s: blank-submission line multiplied to %d copies:\n%s", name, got, content)
++		}
++		for _, want := range []string{"from A", "from B"} {
++			if got := strings.Count(content, want); got != 1 {
++				t.Errorf("machine %s: %q appears %d times, want 1", name, want, got)
++			}
++		}
++	}
++}
++
++// A remote history object that exists but cannot be decoded must abort the
++// history upload: uploading local-only content would clobber the union of
++// entries that could not be merged.
++func TestPushAbortsWhenRemoteHistoryUnreadable(t *testing.T) {
++	store := newMockStorage()
++	machine := newTestMachine(t, store)
++	ctx := context.Background()
++
++	garbage := []byte("not an age-encrypted payload")
++	if err := store.Upload(ctx, "history.jsonl.age", garbage); err != nil {
++		t.Fatal(err)
++	}
++
++	localContent := historyLine("local prompt", 1000, "s1") + "\n"
++	writeFile(t, machine.claudeDir, HistoryFile, localContent)
++
++	res, err := machine.syncer.Push(ctx)
++	if err == nil && len(res.Errors) == 0 {
++		t.Fatal("push should report an error when the remote history cannot be decoded")
++	}
++
++	remote, err := store.Download(ctx, "history.jsonl.age")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(remote) != string(garbage) {
++		t.Error("remote history object was overwritten despite the merge being impossible")
++	}
++	if got := readFile(t, machine.claudeDir, HistoryFile); got != localContent {
++		t.Errorf("local history modified on aborted push: %q", got)
++	}
++}
++
++// headFailStore simulates a transient storage failure on Head (timeout,
++// throttle, 5xx) — indistinguishable from not-found before storage.ErrNotFound,
++// which made the push silently degrade to last-writer-wins.
++type headFailStore struct {
++	*mockStorage
++}
++
++func (h *headFailStore) Head(ctx context.Context, key string) (*storage.ObjectInfo, error) {
++	return nil, errors.New("connection timed out")
++}
++
++func TestPushAbortsOnTransientHeadError(t *testing.T) {
++	store := newMockStorage()
++	seeder := newTestMachine(t, store)
++	ctx := context.Background()
++
++	writeFile(t, seeder.claudeDir, HistoryFile, historyLine("existing union", 1000, "s0")+"\n")
++	if _, err := seeder.syncer.Push(ctx); err != nil {
++		t.Fatalf("seed push: %v", err)
++	}
++	remoteBefore, err := store.Download(ctx, "history.jsonl.age")
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	machine := newTestMachine(t, &headFailStore{mockStorage: store})
++	writeFile(t, machine.claudeDir, HistoryFile, historyLine("local only", 2000, "s1")+"\n")
++
++	res, err := machine.syncer.Push(ctx)
++	if err == nil && len(res.Errors) == 0 {
++		t.Fatal("push should report an error when Head fails transiently")
++	}
++
++	remoteAfter, err := store.Download(ctx, "history.jsonl.age")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(remoteAfter) != string(remoteBefore) {
++		t.Error("transient Head failure let the push clobber the bucket union")
++	}
++}
++
++// Deleting the local history.jsonl must not delete the bucket union: the
++// bucket copy only ever grows, and the next pull restores the file locally.
++func TestPushDoesNotDeleteRemoteHistory(t *testing.T) {
++	store := newMockStorage()
++	machine := newTestMachine(t, store)
++	ctx := context.Background()
++
++	writeFile(t, machine.claudeDir, HistoryFile, historyLine("precious", 1000, "s1")+"\n")
++	if _, err := machine.syncer.Push(ctx); err != nil {
++		t.Fatalf("push: %v", err)
++	}
++
++	if err := os.Remove(filepath.Join(machine.claudeDir, HistoryFile)); err != nil {
++		t.Fatal(err)
++	}
++	res, err := machine.syncer.Push(ctx)
++	if err != nil {
++		t.Fatalf("push after delete: %v", err)
++	}
++	for _, d := range res.Deleted {
++		if d == HistoryFile {
++			t.Error("history.jsonl reported as remotely deleted")
++		}
++	}
++	if _, err := store.Download(ctx, "history.jsonl.age"); err != nil {
++		t.Errorf("bucket history union was deleted: %v", err)
++	}
++
++	// The next pull restores the file locally.
++	if _, err := machine.syncer.Pull(ctx); err != nil {
++		t.Fatalf("pull: %v", err)
++	}
++	if got := readFile(t, machine.claudeDir, HistoryFile); !strings.Contains(got, "precious") {
++		t.Errorf("pull did not restore deleted local history: %q", got)
++	}
++}
++
++// The merge paths must never rewrite the local file — unparseable local lines
++// (e.g. a line torn by a crash) survive every sync untouched.
++func TestPullMergePreservesUnparseableLocalLines(t *testing.T) {
++	store := newMockStorage()
++	machineA := newTestMachine(t, store)
++	machineB := newTestMachine(t, store)
++	ctx := context.Background()
++
++	writeFile(t, machineA.claudeDir, HistoryFile, historyLine("from A", 1000, "s-a")+"\n")
++	if _, err := machineA.syncer.Push(ctx); err != nil {
++		t.Fatalf("A push: %v", err)
++	}
++
++	torn := `{"display":"half a li`
++	localBefore := historyLine("from B", 2000, "s-b") + "\n" + torn + "\n"
++	writeFile(t, machineB.claudeDir, HistoryFile, localBefore)
++
++	if _, err := machineB.syncer.Pull(ctx); err != nil {
++		t.Fatalf("B pull: %v", err)
++	}
++	got := readFile(t, machineB.claudeDir, HistoryFile)
++	if !strings.HasPrefix(got, localBefore) {
++		t.Errorf("local file was rewritten instead of appended to:\ngot  %q\nwant prefix %q", got, localBefore)
++	}
++	if !strings.Contains(got, "from A") {
++		t.Errorf("remote entry not appended:\n%q", got)
++	}
++}
+diff --git a/internal/sync/session_merge.go b/internal/sync/session_merge.go
+new file mode 100644
+index 0000000..471fb05
+--- /dev/null
++++ b/internal/sync/session_merge.go
+@@ -0,0 +1,119 @@
++package sync
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++)
++
++// sessionStateTypes are transcript record types that are MUTABLE session
++// state rather than append-only events: they carry no uuid and no timestamp,
++// and Claude Code treats the LAST occurrence in the file as current.
++// Verified against 1,180 transcripts (12,679 such records, zero timestamps).
++var sessionStateTypes = map[string]bool{
++	"mode":            true,
++	"custom-title":    true,
++	"ai-title":        true,
++	"permission-mode": true,
++	"last-prompt":     true,
++	"worktree-state":  true,
++}
++
++type sessionRecord struct {
++	UUID string `json:"uuid"`
++	Type string `json:"type"`
++}
++
++// MergeSessionPayloads unions two genuinely diverged session transcripts.
++// Like MergeHistoryPayloads, it returns ONLY lines to append — the local file
++// is never rewritten, so a live session's concurrent appends survive, and
++// applying the merge is idempotent.
++//
++// Record classes are handled by their write semantics:
++//   - uuid-keyed events: immutable DAG nodes (parentUuid links); remote-only
++//     events are appended in remote order. Claude Code already reads forked
++//     DAGs (782 of 1,180 real files contain forks), so append order is safe.
++//   - uuid-less last-wins state (sessionStateTypes): these carry no
++//     timestamp, so per-record ordering across machines is impossible. Each
++//     side's FINAL record per type is tracked independently (last one in the
++//     file wins on that side) — a state line is never raw-consumed or
++//     appended directly, only compared as a whole final value. Remote's
++//     final record per type is appended when local never had that type at
++//     all (nothing local to protect, so remote's value is preserved
++//     regardless of file times), or when the remote file is newer and its
++//     final value differs from local's final value. Everything else —
++//     local is newer and has its own value, or the two finals are
++//     byte-identical — appends nothing, so a stale intermediate remote
++//     record (e.g. remote wrote mode=plan then mode=normal, matching
++//     local's mode=normal) can never resurrect as a spurious append.
++//   - other uuid-less records (queue-operation, ...): exact-raw-line multiset
++//     union, the same rule that makes the history merge idempotent.
++//
++// Unparseable remote lines with no exact local match are dropped, not
++// propagated.
++func MergeSessionPayloads(local, remote []byte, localNewer bool) (addedLines [][]byte, err error) {
++	rawCount := make(map[string]int)
++	uuids := make(map[string]bool)
++	localFinal := make(map[string][]byte) // last local state record per type
++
++	err = forEachLine(bytes.NewReader(local), func(line []byte) {
++		rawCount[string(line)]++
++		var r sessionRecord
++		if json.Unmarshal(line, &r) != nil {
++			return
++		}
++		if r.UUID != "" {
++			uuids[r.UUID] = true
++			return
++		}
++		if sessionStateTypes[r.Type] {
++			localFinal[r.Type] = append([]byte(nil), line...)
++		}
++	})
++	if err != nil {
++		return nil, fmt.Errorf("parsing local session: %w", err)
++	}
++
++	remoteFinal := make(map[string][]byte) // last remote state record per type
++	var remoteStateOrder []string
++
++	err = forEachLine(bytes.NewReader(remote), func(line []byte) {
++		var r sessionRecord
++		parseErr := json.Unmarshal(line, &r)
++		if parseErr == nil && r.UUID == "" && sessionStateTypes[r.Type] {
++			// State lines never raw-consume and never append directly: only
++			// the final value per type (tracked here) is ever considered.
++			if _, seen := remoteFinal[r.Type]; !seen {
++				remoteStateOrder = append(remoteStateOrder, r.Type)
++			}
++			remoteFinal[r.Type] = append([]byte(nil), line...)
++			return
++		}
++		if rawCount[string(line)] > 0 {
++			rawCount[string(line)]--
++			return
++		}
++		if parseErr != nil {
++			return // unparseable remote-only line: drop
++		}
++		if r.UUID != "" {
++			if uuids[r.UUID] {
++				return // same event, different serialization: local wins
++			}
++			addedLines = append(addedLines, append([]byte(nil), line...))
++			return
++		}
++		addedLines = append(addedLines, append([]byte(nil), line...))
++	})
++	if err != nil {
++		return nil, fmt.Errorf("parsing remote session: %w", err)
++	}
++
++	for _, t := range remoteStateOrder {
++		localVal, hadLocal := localFinal[t]
++		if !hadLocal || (!localNewer && !bytes.Equal(remoteFinal[t], localVal)) {
++			addedLines = append(addedLines, remoteFinal[t])
++		}
++	}
++	return addedLines, nil
++}
+diff --git a/internal/sync/session_merge_test.go b/internal/sync/session_merge_test.go
+new file mode 100644
+index 0000000..d56cff5
+--- /dev/null
++++ b/internal/sync/session_merge_test.go
+@@ -0,0 +1,157 @@
++package sync
++
++import (
++	"strings"
++	"testing"
++)
++
++// TestSessionMergeForkKeepsDAGWholeAndBranchOrder is the timestamp-ordering
++// audit for forks (the same session continued on two machines). The merge is
++// append-only by design — a global timestamp sort would require rewriting a
++// file a live session may be appending to, the exact race the history merge
++// eliminated. Correct rendering order instead rests on two invariants pinned
++// here:
++//  1. DAG integrity: every event's parentUuid resolves within the merged
++//     file — Claude Code renders threads from these links, not line order.
++//  2. Branch chronology: appended remote events keep their remote relative
++//     order, which IS their chronological order within that branch.
++func TestSessionMergeForkKeepsDAGWholeAndBranchOrder(t *testing.T) {
++	// Common prefix: e1(t1) <- e2(t2). Local continued: e3(t4, parent e2).
++	// Remote forked earlier with interleaving timestamps: e2b(t3, parent e2),
++	// e2c(t5, parent e2b).
++	e1 := `{"uuid":"e1","parentUuid":null,"type":"user","timestamp":"2026-08-01T10:01:00Z"}`
++	e2 := `{"uuid":"e2","parentUuid":"e1","type":"assistant","timestamp":"2026-08-01T10:02:00Z"}`
++	e3 := `{"uuid":"e3","parentUuid":"e2","type":"user","timestamp":"2026-08-01T10:04:00Z"}`
++	e2b := `{"uuid":"e2b","parentUuid":"e2","type":"user","timestamp":"2026-08-01T10:03:00Z"}`
++	e2c := `{"uuid":"e2c","parentUuid":"e2b","type":"assistant","timestamp":"2026-08-01T10:05:00Z"}`
++
++	local := e1 + "\n" + e2 + "\n" + e3 + "\n"
++	remote := e1 + "\n" + e2 + "\n" + e2b + "\n" + e2c + "\n"
++
++	added := mergeStr(t, local, remote, false)
++	if len(added) != 2 {
++		t.Fatalf("added = %d lines, want 2 (e2b, e2c): %v", len(added), added)
++	}
++	// Branch chronology: e2b must precede e2c.
++	if !strings.Contains(added[0], `"e2b"`) || !strings.Contains(added[1], `"e2c"`) {
++		t.Errorf("remote branch order not preserved: %v", added)
++	}
++
++	// DAG integrity over the merged file: every parentUuid resolves.
++	merged := local + strings.Join(added, "\n") + "\n"
++	uuids := map[string]bool{}
++	for _, ln := range strings.Split(strings.TrimSpace(merged), "\n") {
++		if i := strings.Index(ln, `"uuid":"`); i >= 0 {
++			rest := ln[i+8:]
++			uuids[rest[:strings.Index(rest, `"`)]] = true
++		}
++	}
++	for _, ln := range strings.Split(strings.TrimSpace(merged), "\n") {
++		i := strings.Index(ln, `"parentUuid":"`)
++		if i < 0 {
++			continue // null parent (root)
++		}
++		rest := ln[i+14:]
++		parent := rest[:strings.Index(rest, `"`)]
++		if !uuids[parent] {
++			t.Errorf("orphaned event: parentUuid %q not in merged file (line %s)", parent, ln)
++		}
++	}
++
++	// Idempotence after applying the append: nothing more to add either way.
++	if again := mergeStr(t, merged, remote, false); len(again) != 0 {
++		t.Errorf("re-merge added %d lines, want 0: %v", len(again), again)
++	}
++}
++
++func mergeStr(t *testing.T, local, remote string, localNewer bool) []string {
++	t.Helper()
++	added, err := MergeSessionPayloads([]byte(local), []byte(remote), localNewer)
++	if err != nil {
++		t.Fatalf("MergeSessionPayloads: %v", err)
++	}
++	out := make([]string, len(added))
++	for i, l := range added {
++		out[i] = string(l)
++	}
++	return out
++}
++
++func TestSessionMergeAddsRemoteOnlyEvents(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n" + `{"uuid":"b","type":"assistant","parentUuid":"a"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + `{"uuid":"c","type":"assistant","parentUuid":"a"}` + "\n"
++	added := mergeStr(t, local, remote, true)
++	if len(added) != 1 || !strings.Contains(added[0], `"uuid":"c"`) {
++		t.Errorf("want exactly the remote-only event c, got %v", added)
++	}
++}
++
++func TestSessionMergeIsIdempotent(t *testing.T) {
++	payload := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"mode","mode":"normal"}` + "\n"
++	if added := mergeStr(t, payload, payload, true); len(added) != 0 {
++		t.Errorf("merge(x,x) must add nothing, got %v", added)
++	}
++	if added := mergeStr(t, payload, payload, false); len(added) != 0 {
++		t.Errorf("merge(x,x) must add nothing even when remote is newer, got %v", added)
++	}
++}
++
++func TestSessionMergeStateWinsByFileTime(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"custom-title","customTitle":"old"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"custom-title","customTitle":"new"}` + "\n"
++
++	added := mergeStr(t, local, remote, false)
++	if len(added) != 1 || !strings.Contains(added[0], `"customTitle":"new"`) {
++		t.Errorf("remote-newer: want remote title appended, got %v", added)
++	}
++
++	if added := mergeStr(t, local, remote, true); len(added) != 0 {
++		t.Errorf("local-newer: remote state must be dropped, got %v", added)
++	}
++}
++
++func TestSessionMergeKeepsOnlyLastStateRecordPerType(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" +
++		`{"type":"mode","mode":"plan"}` + "\n" +
++		`{"type":"mode","mode":"normal"}` + "\n"
++	added := mergeStr(t, local, remote, false)
++	if len(added) != 1 || !strings.Contains(added[0], `"mode":"normal"`) {
++		t.Errorf("want only remote's LAST mode record, got %v", added)
++	}
++}
++
++func TestSessionMergeUnionsUuidlessNonStateByRawLine(t *testing.T) {
++	op := `{"type":"queue-operation","op":"enqueue"}`
++	local := `{"uuid":"a","type":"user"}` + "\n" + op + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + op + "\n" + op + "\n"
++	added := mergeStr(t, local, remote, true)
++	if len(added) != 1 || added[0] != op {
++		t.Errorf("want one more queue-operation from multiset union, got %v", added)
++	}
++}
++
++func TestSessionMergeDropsUnparseableRemoteLinesWithoutExactMatch(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + `{"torn`
++	if added := mergeStr(t, local, remote, false); len(added) != 0 {
++		t.Errorf("unparseable remote-only line must be dropped, got %v", added)
++	}
++}
++
++func TestSessionMergeIdenticalFinalStateDoesNotResurrectStale(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"mode","mode":"normal"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"mode","mode":"plan"}` + "\n" + `{"type":"mode","mode":"normal"}` + "\n"
++	if added := mergeStr(t, local, remote, false); len(added) != 0 {
++		t.Errorf("identical final state must append nothing (stale intermediate must not resurrect), got %v", added)
++	}
++}
++
++func TestSessionMergePreservesStateTypesLocalNeverHad(t *testing.T) {
++	local := `{"uuid":"a","type":"user"}` + "\n"
++	remote := `{"uuid":"a","type":"user"}` + "\n" + `{"type":"custom-title","customTitle":"set-on-other-machine"}` + "\n"
++	added := mergeStr(t, local, remote, true) // local newer — but it never had a title
++	if len(added) != 1 || !strings.Contains(added[0], "set-on-other-machine") {
++		t.Errorf("state type absent locally must be preserved even when local is newer, got %v", added)
++	}
++}
+diff --git a/internal/sync/state.go b/internal/sync/state.go
+index f0ae2c8..45831c7 100644
+--- a/internal/sync/state.go
++++ b/internal/sync/state.go
+@@ -217,6 +217,14 @@ func HashFile(path string) (string, error) {
+ 	return hex.EncodeToString(h.Sum(nil)), nil
+ }
+ 
++// HashBytes returns the hex SHA256 of data, in the same format as HashFile, so
++// state can be recorded from bytes already in memory without re-reading the
++// file (and without racing a concurrent writer between the write and the read).
++func HashBytes(data []byte) string {
++	sum := sha256.Sum256(data)
++	return hex.EncodeToString(sum[:])
++}
++
+ // isWithin reports whether target is root itself or lives underneath it.
+ // Both are cleaned first so ".." segments cannot slip through.
+ func isWithin(root, target string) bool {
+@@ -356,6 +364,12 @@ func (s *SyncState) DetectChanges(claudeDir string, syncPaths []string, excludeF
+ 	s.mu.Unlock()
+ 
+ 	for _, relPath := range knownPaths {
++		// Desktop session records are tracked in state but live outside
++		// claudeDir — they are never local files here, and their bucket copies
++		// must never be deleted (the registry only grows, like history).
++		if strings.HasPrefix(relPath, CCDSessionsPrefix) {
++			continue
++		}
+ 		if _, exists := localFiles[relPath]; !exists {
+ 			changes = append(changes, FileChange{
+ 				Path:   relPath,
+diff --git a/internal/sync/sync.go b/internal/sync/sync.go
+index caa8410..d6c7412 100644
+--- a/internal/sync/sync.go
++++ b/internal/sync/sync.go
+@@ -5,10 +5,12 @@ import (
+ 	"compress/gzip"
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"io"
+ 	"os"
+ 	"path/filepath"
++	"regexp"
+ 	"strings"
+ 	"sync"
+ 	"sync/atomic"
+@@ -26,6 +28,14 @@ import (
+ 
+ const defaultWorkers = 10
+ 
++// conflictArtifactRe matches only this tool's own conflict artifacts
++// (<name>.conflict.<yyyymmdd>-<hhmmss>, the format handleConflict writes),
++// never user files that merely contain ".conflict." in their names. The
++// anchoring matters: excluding a path that is already tracked in state makes
++// the next push prune it from the bucket, so a loose pattern would turn into
++// remote deletion of real data.
++var conflictArtifactRe = regexp.MustCompile(`\.conflict\.\d{8}-\d{6}$`)
++
+ // maxDecompressedSize is the maximum allowed size for decompressed data (500MB).
+ // This prevents decompression bomb attacks from consuming excessive memory.
+ const maxDecompressedSize = 500 * 1024 * 1024
+@@ -33,6 +43,12 @@ const maxDecompressedSize = 500 * 1024 * 1024
+ // ManifestKey is the remote storage key for file metadata (mtimes).
+ const ManifestKey = "_metadata/manifest.json"
+ 
++// errSkipUpload is returned by uploadFile when the shrink guard declines to
++// upload a truncated session transcript. Push treats it as neither an upload
++// nor an error: it is deliberate inaction, and reporting it as a failure would
++// make every push look broken while a machine waits for its next pull.
++var errSkipUpload = errors.New("upload skipped: local copy is behind the bucket copy")
++
+ // FileManifest stores metadata about synced files, primarily mtimes.
+ type FileManifest struct {
+ 	Files map[string]FileMetadata `json:"files"`
+@@ -52,6 +68,20 @@ type Syncer struct {
+ 	onProgress ProgressFunc
+ 	cfg        *config.Config
+ 	paths      *PathMapper
++	ccdDir     string // desktop-app session store override (tests inject a temp dir)
++}
++
++// uploadEncoded compresses, encrypts, and uploads raw bytes to a remote key.
++func (s *Syncer) uploadEncoded(ctx context.Context, key string, data []byte) error {
++	compressed, err := gzipCompress(data)
++	if err != nil {
++		return fmt.Errorf("failed to compress: %w", err)
++	}
++	encrypted, err := s.encryptor.Encrypt(compressed)
++	if err != nil {
++		return fmt.Errorf("failed to encrypt: %w", err)
++	}
++	return s.storage.Upload(ctx, key, encrypted)
+ }
+ 
+ type SyncResult struct {
+@@ -146,6 +176,15 @@ func (s *Syncer) progress(event ProgressEvent) {
+ }
+ 
+ func (s *Syncer) isExcluded(relPath string) bool {
++	// Per-machine debris never syncs, regardless of user excludes. A .lock is
++	// a local process lock — on another machine it is indistinguishable from a
++	// lock genuinely held there. A .conflict.<ts> file is this tool's own local
++	// recovery artifact; uploading it replicates the artifact to every machine,
++	// where each copy can itself be re-detected and spawn further ones.
++	base := filepath.Base(relPath)
++	if base == ".lock" || conflictArtifactRe.MatchString(base) {
++		return true
++	}
+ 	return s.cfg.IsExcluded(relPath)
+ }
+ 
+@@ -186,6 +225,13 @@ func (s *Syncer) Push(ctx context.Context) (*SyncResult, error) {
+ 
+ 	if len(changes) == 0 {
+ 		s.progress(ProgressEvent{Action: "scan", Complete: true})
++		// Desktop-only changes (rename/archive/new app session) touch no
++		// ~/.claude file, so records must still publish on an otherwise
++		// no-op push.
++		s.pushCCDSessions(ctx, result)
++		if err := s.state.Save(); err != nil {
++			return result, fmt.Errorf("failed to save state: %w", err)
++		}
+ 		return result, nil
+ 	}
+ 
+@@ -226,6 +272,11 @@ func (s *Syncer) Push(ctx context.Context) (*SyncResult, error) {
+ 				})
+ 
+ 				if err := s.uploadFile(ctx, change.Path); err != nil {
++					if errors.Is(err, errSkipUpload) {
++						// Deliberate inaction, not a failure: the file is
++						// neither uploaded nor errored.
++						return
++					}
+ 					s.progress(ProgressEvent{
+ 						Action: "upload",
+ 						Path:   change.Path,
+@@ -246,16 +297,31 @@ func (s *Syncer) Push(ctx context.Context) (*SyncResult, error) {
+ 
+ 	// Process deletes (use batch delete if available, otherwise concurrent)
+ 	if len(deletes) > 0 {
+-		deleteKeys := make([]string, len(deletes))
+-		for i, change := range deletes {
+-			deleteKeys[i] = s.remoteKey(change.Path)
+-		}
+-		if err := s.storage.DeleteBatch(ctx, deleteKeys); err != nil {
+-			result.Errors = append(result.Errors, fmt.Errorf("batch delete: %w", err))
+-		} else {
+-			for _, change := range deletes {
++		// The bucket's history.jsonl is a union that only ever grows — a
++		// locally deleted history file must not delete every other machine's
++		// entries with it. Drop the state entry instead; the next pull
++		// restores the file locally.
++		var remoteDeletes []FileChange
++		for _, change := range deletes {
++			if change.Path == HistoryFile {
+ 				s.state.RemoveFile(change.Path)
+-				result.Deleted = append(result.Deleted, change.Path)
++				continue
++			}
++			remoteDeletes = append(remoteDeletes, change)
++		}
++
++		if len(remoteDeletes) > 0 {
++			deleteKeys := make([]string, len(remoteDeletes))
++			for i, change := range remoteDeletes {
++				deleteKeys[i] = s.remoteKey(change.Path)
++			}
++			if err := s.storage.DeleteBatch(ctx, deleteKeys); err != nil {
++				result.Errors = append(result.Errors, fmt.Errorf("batch delete: %w", err))
++			} else {
++				for _, change := range remoteDeletes {
++					s.state.RemoveFile(change.Path)
++					result.Deleted = append(result.Deleted, change.Path)
++				}
+ 			}
+ 		}
+ 	}
+@@ -270,6 +336,10 @@ func (s *Syncer) Push(ctx context.Context) (*SyncResult, error) {
+ 		}
+ 	}
+ 
++	// Sync desktop-app session records BEFORE saving state — their state
++	// entries must persist or every future hook re-transfers every record.
++	s.pushCCDSessions(ctx, result)
++
+ 	s.state.LastPush = time.Now()
+ 	s.state.LastSync = time.Now()
+ 	if err := s.state.Save(); err != nil {
+@@ -322,6 +392,24 @@ func (s *Syncer) Pull(ctx context.Context) (*SyncResult, error) {
+ 		localInfo, localExists := localFiles[localPath]
+ 		stateFile := s.state.GetFile(localPath)
+ 
++		// A local history.jsonl is union-merged with the remote copy instead
++		// of being overwritten (data loss) or kept with the remote parked in a
++		// .conflict file (invisible data). Merge on first sync regardless of
++		// mtimes, and afterwards whenever the remote changed since our last
++		// upload. A missing local file falls through to the plain download.
++		if localPath == HistoryFile && localExists {
++			if stateFile == nil || remoteObj.LastModified.After(stateFile.Uploaded) {
++				changed, err := s.pullMergeHistory(ctx, localPath, remoteObj)
++				if err != nil {
++					result.Errors = append(result.Errors, fmt.Errorf("%s: %w", localPath, err))
++				} else if changed {
++					result.Downloaded = append(result.Downloaded, localPath)
++					s.progress(ProgressEvent{Action: "download", Path: localPath, Size: remoteObj.Size})
++				}
++			}
++			continue
++		}
++
+ 		shouldDownload := false
+ 
+ 		if !localExists {
+@@ -333,6 +421,26 @@ func (s *Syncer) Pull(ctx context.Context) (*SyncResult, error) {
+ 				// Check if local was also modified
+ 				localHash, _ := HashFile(filepath.Join(s.claudeDir, localPath))
+ 				if localHash != stateFile.Hash {
++					// Both sides changed since the last sync. For append-only
++					// session transcripts that usually means one side is
++					// simply ahead — a fast-forward, not a conflict. Compare
++					// the bytes before declaring one (resolveJSONLConflict).
++					if isSessionJSONL(localPath) {
++						res, rerr := s.resolveJSONLConflict(ctx, localPath, remoteObj)
++						if rerr != nil {
++							result.Errors = append(result.Errors, fmt.Errorf("%s: %w", localPath, rerr))
++							continue
++						}
++						switch res {
++						case jsonlEqual, jsonlLocalAhead:
++							continue
++						case jsonlFastForwarded, jsonlMerged:
++							result.Downloaded = append(result.Downloaded, localPath)
++							s.progress(ProgressEvent{Action: "download", Path: localPath, Size: remoteObj.Size})
++							continue
++						}
++						// jsonlConflict falls through to the standard path.
++					}
+ 					// Conflict: both changed
+ 					result.Conflicts = append(result.Conflicts, localPath)
+ 					s.progress(ProgressEvent{
+@@ -408,6 +516,10 @@ func (s *Syncer) Pull(ctx context.Context) (*SyncResult, error) {
+ 
+ 	s.progress(ProgressEvent{Action: "download", Complete: true, Total: total})
+ 
++	// Sync desktop-app session records BEFORE saving state (their entries must
++	// persist to avoid re-fetching every record on every pull).
++	s.pullCCDSessions(ctx, result)
++
+ 	s.state.LastPull = time.Now()
+ 	s.state.LastSync = time.Now()
+ 	if err := s.state.Save(); err != nil {
+@@ -430,6 +542,44 @@ func (s *Syncer) uploadFile(ctx context.Context, relativePath string) error {
+ 		return fmt.Errorf("failed to read file: %w", err)
+ 	}
+ 
++	// history.jsonl is one file appended to by every machine, so a plain
++	// upload is last-writer-wins and silently drops the other machines'
++	// prompt-history entries. Union-merging the remote copy into the upload
++	// keeps the bucket copy a superset of every machine's history.
++	if relativePath == HistoryFile {
++		merged, err := s.mergeHistoryForPush(ctx, relativePath, fullPath, data)
++		if err != nil {
++			return err
++		}
++		data = merged
++	}
++
++	// A session transcript that SHRANK since the last push is far more likely
++	// a truncated copy (partial restore, torn sync) than a real rewrite — and
++	// uploading it would clobber the fuller bucket copy for every machine.
++	// When local is a (possibly equal) prefix of the current remote, skip the
++	// upload; the next pull fast-forwards local instead. State is left
++	// untouched so the file is re-examined on the next push. The remote
++	// round-trip is paid only in the shrunk case, and any fetch error
++	// (not-found included) falls through to a normal upload — this guard must
++	// never turn a push into a hard failure.
++	if isSessionJSONL(relativePath) {
++		if st := s.state.GetFile(relativePath); st != nil && int64(len(data)) < st.Size {
++			if remote, ferr := s.fetchDecoded(ctx, relativePath, s.remoteKey(relativePath)); ferr == nil {
++				switch ClassifyPrefix(data, remote) {
++				case PrefixEqual, PrefixRemoteAhead:
++					s.log("Skipping upload of %s: local copy is behind the bucket copy", relativePath)
++					return errSkipUpload
++				}
++			}
++		}
++	}
++
++	// Local-form bytes actually being uploaded; for history the state hash is
++	// computed from this instead of re-reading the file, so any line a live
++	// session appends after our read still differs from state and gets pushed.
++	localForm := data
++
+ 	// Replace machine-specific paths with portable tokens in session content
+ 	if IsPortableContentPath(relativePath) {
+ 		data = s.paths.NormalizeContent(relativePath, data)
+@@ -455,33 +605,39 @@ func (s *Syncer) uploadFile(ctx context.Context, relativePath string) error {
+ 
+ 	// Update state
+ 	info, _ := os.Stat(fullPath)
+-	hash, _ := HashFile(fullPath)
++	var hash string
++	if relativePath == HistoryFile {
++		hash = HashBytes(localForm)
++	} else {
++		hash, _ = HashFile(fullPath)
++	}
+ 	s.state.UpdateFile(relativePath, info, hash)
+ 	s.state.MarkUploaded(relativePath)
+ 
+ 	return nil
+ }
+ 
+-// downloadFile downloads and decrypts a file from remote storage.
+-// If originalMtime is non-nil, the file's modification time will be restored to that value.
+-func (s *Syncer) downloadFile(ctx context.Context, relativePath, remoteKey string, originalMtime *time.Time) error {
+-	// Download
++// fetchDecoded downloads a remote object and returns its plaintext in LOCAL
++// form: decrypted, decompressed, and with portable tokens resolved to this
++// device's paths. Factored out of downloadFile so callers can inspect remote
++// content without writing it to disk, and so a byte comparison against the
++// local file compares like with like.
++func (s *Syncer) fetchDecoded(ctx context.Context, relativePath, remoteKey string) ([]byte, error) {
+ 	encrypted, err := s.storage.Download(ctx, remoteKey)
+ 	if err != nil {
+-		return fmt.Errorf("failed to download: %w", err)
++		return nil, fmt.Errorf("failed to download: %w", err)
+ 	}
+ 
+-	// Decrypt
+ 	data, err := s.encryptor.Decrypt(encrypted)
+ 	if err != nil {
+-		return fmt.Errorf("failed to decrypt: %w", err)
++		return nil, fmt.Errorf("failed to decrypt: %w", err)
+ 	}
+ 
+ 	// Decompress if gzipped (backward-compatible with uncompressed data)
+ 	if isGzipped(data) {
+ 		data, err = gzipDecompress(data)
+ 		if err != nil {
+-			return fmt.Errorf("failed to decompress: %w", err)
++			return nil, fmt.Errorf("failed to decompress: %w", err)
+ 		}
+ 	}
+ 
+@@ -489,6 +645,85 @@ func (s *Syncer) downloadFile(ctx context.Context, relativePath, remoteKey strin
+ 	if IsPortableContentPath(relativePath) {
+ 		data = s.paths.ResolveContent(relativePath, data)
+ 	}
++	return data, nil
++}
++
++// mergeHistoryForPush returns the union of the local history payload and the
++// current remote copy. When the remote contributes entries they are APPENDED
++// to the local file (never a rewrite — a rewrite from a stale read would
++// destroy lines a live Claude Code session appends during the merge's network
++// round-trip). A missing remote object (first push) is not an error; any
++// other failure — a transient Head error included — aborts the upload rather
++// than clobbering entries that could not be merged.
++func (s *Syncer) mergeHistoryForPush(ctx context.Context, relativePath, fullPath string, local []byte) ([]byte, error) {
++	remoteKey := s.remoteKey(relativePath)
++	if _, err := s.storage.Head(ctx, remoteKey); err != nil {
++		if storage.IsNotFound(err) {
++			// No remote copy yet — nothing to merge.
++			return local, nil
++		}
++		return nil, fmt.Errorf("checking remote history before merge: %w", err)
++	}
++
++	remote, err := s.fetchDecoded(ctx, relativePath, remoteKey)
++	if err != nil {
++		return nil, fmt.Errorf("fetching remote history for merge: %w", err)
++	}
++
++	merged, addedLines, err := MergeHistoryPayloads(local, remote)
++	if err != nil {
++		return nil, fmt.Errorf("merging history: %w", err)
++	}
++	if len(addedLines) == 0 {
++		return local, nil
++	}
++
++	if err := appendHistoryLines(fullPath, addedLines); err != nil {
++		return nil, fmt.Errorf("appending merged history: %w", err)
++	}
++	return merged, nil
++}
++
++// pullMergeHistory folds the remote history into the local file by APPENDING
++// the missing lines, instead of overwriting the file or declaring a conflict.
++// State is intentionally left untouched when lines are appended: the local
++// hash then differs from the last-uploaded hash, so the next push detects the
++// change and publishes the union back to the bucket.
++func (s *Syncer) pullMergeHistory(ctx context.Context, relativePath string, remoteObj storage.ObjectInfo) (bool, error) {
++	remote, err := s.fetchDecoded(ctx, relativePath, remoteObj.Key)
++	if err != nil {
++		return false, err
++	}
++
++	fullPath := filepath.Join(s.claudeDir, relativePath)
++	local, err := os.ReadFile(fullPath)
++	if err != nil && !os.IsNotExist(err) {
++		return false, err
++	}
++
++	_, addedLines, err := MergeHistoryPayloads(local, remote)
++	if err != nil {
++		return false, err
++	}
++	if len(addedLines) == 0 {
++		// Local is already a superset; if it differs from state the next push
++		// will publish it.
++		return false, nil
++	}
++
++	if err := appendHistoryLines(fullPath, addedLines); err != nil {
++		return false, err
++	}
++	return true, nil
++}
++
++// downloadFile downloads and decrypts a file from remote storage.
++// If originalMtime is non-nil, the file's modification time will be restored to that value.
++func (s *Syncer) downloadFile(ctx context.Context, relativePath, remoteKey string, originalMtime *time.Time) error {
++	data, err := s.fetchDecoded(ctx, relativePath, remoteKey)
++	if err != nil {
++		return err
++	}
+ 
+ 	// Guard against path traversal from crafted remote keys
+ 	fullPath := filepath.Join(s.claudeDir, relativePath)
+@@ -524,6 +759,138 @@ func (s *Syncer) downloadFile(ctx context.Context, relativePath, remoteKey strin
+ 	return nil
+ }
+ 
++// jsonlResolution is the outcome of resolveJSONLConflict. jsonlConflict is the
++// zero value and is also what accompanies any error return.
++type jsonlResolution int
++
++const (
++	jsonlConflict      jsonlResolution = iota // genuinely diverged: caller runs handleConflict
++	jsonlEqual                                // same bytes: state refreshed, nothing written
++	jsonlFastForwarded                        // local extended with the remote's missing tail
++	jsonlLocalAhead                           // local kept; the next push publishes it
++	jsonlMerged                               // diverged transcripts united by MergeSessionPayloads
++)
++
++// resolveJSONLConflict re-examines an apparent both-sides-changed conflict on
++// an append-only session transcript before it is declared.
++//
++// In a 92-artifact corpus every such "conflict" was a strict byte-prefix
++// relation: one side simply ahead (an active session appending between two
++// syncs) or one side truncated (a partial restore). Writing a .conflict file
++// for those either loses nothing or, in the truncated case, parks the ONLY
++// complete copy in a file Claude Code never reads.
++//
++// The remote payload is downloaded here, but that costs nothing extra: the
++// conflict path this replaces already downloads it to write the .conflict file.
++func (s *Syncer) resolveJSONLConflict(ctx context.Context, relativePath string, remoteObj storage.ObjectInfo) (jsonlResolution, error) {
++	remote, err := s.fetchDecoded(ctx, relativePath, remoteObj.Key)
++	if err != nil {
++		return jsonlConflict, err
++	}
++	fullPath := filepath.Join(s.claudeDir, relativePath)
++	local, err := os.ReadFile(fullPath)
++	if err != nil {
++		return jsonlConflict, err
++	}
++
++	switch ClassifyPrefix(local, remote) {
++	case PrefixEqual:
++		// Same content on both sides. Refresh state so this file stops
++		// re-triggering conflict detection on every subsequent pull.
++		info, statErr := os.Stat(fullPath)
++		if statErr != nil {
++			return jsonlConflict, statErr
++		}
++		s.state.UpdateFile(relativePath, info, HashBytes(local))
++		s.state.MarkUploaded(relativePath)
++		return jsonlEqual, nil
++
++	case PrefixRemoteAhead:
++		// Remote strictly extends local (typically a truncated local copy).
++		// Append ONLY the missing tail with O_APPEND — never truncate-rewrite.
++		// If a live session appends between our read and this write, an append
++		// yields divergent ordering that the next pull classifies as a real
++		// conflict (zero bytes lost), whereas a rewrite would silently drop
++		// those lines.
++		f, oerr := os.OpenFile(fullPath, os.O_APPEND|os.O_WRONLY, 0600)
++		if oerr != nil {
++			return jsonlConflict, oerr
++		}
++		if _, werr := f.Write(remote[len(local):]); werr != nil {
++			_ = f.Close()
++			return jsonlConflict, werr
++		}
++		if cerr := f.Close(); cerr != nil {
++			return jsonlConflict, cerr
++		}
++
++		final, rerr := os.ReadFile(fullPath)
++		if rerr != nil {
++			return jsonlConflict, rerr
++		}
++		if bytes.Equal(final, remote) {
++			// Clean fast-forward: record the new content, and that the bucket
++			// already holds exactly these bytes.
++			info, statErr := os.Stat(fullPath)
++			if statErr != nil {
++				return jsonlConflict, statErr
++			}
++			s.state.UpdateFile(relativePath, info, HashBytes(final))
++			s.state.MarkUploaded(relativePath)
++		}
++		// Otherwise a live session appended during the fast-forward, so the
++		// file is local+concurrent+tail while the bucket holds local+tail.
++		// Leave state UNTOUCHED on purpose: UpdateFile resets the Uploaded
++		// timestamp, so recording the new hash would make the next pull see
++		// "local unchanged, remote newer" and rewrite the file from the
++		// bucket, silently dropping the concurrent lines. With state stale the
++		// next pull re-enters this resolver, classifies PrefixNone and writes
++		// a real .conflict file, and the next push publishes the full local
++		// file. Nothing is lost either way.
++		return jsonlFastForwarded, nil
++
++	case PrefixLocalAhead:
++		// Local strictly extends remote: the bucket is simply behind this
++		// machine. Keep local and leave state untouched so the next push
++		// publishes it. A .conflict copy of a stale prefix is pure noise.
++		return jsonlLocalAhead, nil
++
++	case PrefixNone:
++		// Genuinely diverged: the same session advanced on two machines.
++		// Union-merge by APPENDING what the remote has that local lacks
++		// (MergeSessionPayloads never rewrites local). Whose mutable state
++		// wins is decided by file-level times — the records themselves carry
++		// no timestamp to order by. LastModified is upload time and lags the
++		// remote write by up to one push delay, so near-ties resolve in
++		// remote's favour — a bounded, self-correcting bias (stale state
++		// until the next local state write). Any merge failure degrades to
++		// the legacy keep-local-plus-.conflict path rather than blocking the
++		// pull.
++		info, statErr := os.Stat(fullPath)
++		if statErr != nil {
++			return jsonlConflict, statErr
++		}
++		localNewer := info.ModTime().After(remoteObj.LastModified)
++		added, merr := MergeSessionPayloads(local, remote, localNewer)
++		if merr != nil {
++			return jsonlConflict, nil
++		}
++		if len(added) == 0 {
++			// Local already carries everything the remote has. Keep it; state
++			// stays untouched so the next push publishes the union.
++			return jsonlLocalAhead, nil
++		}
++		if aerr := appendHistoryLines(fullPath, added); aerr != nil {
++			return jsonlConflict, nil
++		}
++		// State intentionally untouched (same convention as pullMergeHistory):
++		// the local hash now differs from the last-uploaded hash, so the next
++		// push publishes the union.
++		return jsonlMerged, nil
++	}
++	return jsonlConflict, nil
++}
++
+ func (s *Syncer) handleConflict(ctx context.Context, relativePath string, remoteObj storage.ObjectInfo) error {
+ 	s.log("Conflict detected: %s (keeping local, saving remote as .conflict)", relativePath)
+ 
+diff --git a/internal/sync/sync_push_pull_test.go b/internal/sync/sync_push_pull_test.go
+index 091b912..c35a659 100644
+--- a/internal/sync/sync_push_pull_test.go
++++ b/internal/sync/sync_push_pull_test.go
+@@ -88,7 +88,7 @@ func (m *mockStorage) Head(_ context.Context, key string) (*storage.ObjectInfo,
+ 	defer m.mu.Unlock()
+ 	obj, ok := m.objects[key]
+ 	if !ok {
+-		return nil, fmt.Errorf("object not found: %s", key)
++		return nil, fmt.Errorf("%s: %w", key, storage.ErrNotFound)
+ 	}
+ 	return &storage.ObjectInfo{
+ 		Key:          key,
+@@ -101,7 +101,8 @@ func (m *mockStorage) BucketExists(_ context.Context) (bool, error) {
+ 	return true, nil
+ }
+ 
+-// ListUserObjects returns objects excluding metadata (_metadata/) and external (_external/) files.
++// ListUserObjects returns objects excluding metadata (_metadata/), external
++// (_external/), and desktop session-record (_ccd-sessions/) files.
+ // Use this in tests to count only actual synced user files.
+ func (m *mockStorage) ListUserObjects(ctx context.Context) ([]storage.ObjectInfo, error) {
+ 	objs, err := m.List(ctx, "")
+@@ -110,7 +111,8 @@ func (m *mockStorage) ListUserObjects(ctx context.Context) ([]storage.ObjectInfo
+ 	}
+ 	var result []storage.ObjectInfo
+ 	for _, obj := range objs {
+-		if strings.HasPrefix(obj.Key, "_metadata/") || strings.HasPrefix(obj.Key, "_external/") {
++		if strings.HasPrefix(obj.Key, "_metadata/") || strings.HasPrefix(obj.Key, "_external/") ||
++			strings.HasPrefix(obj.Key, CCDSessionsPrefix) {
+ 			continue
+ 		}
+ 		result = append(result, obj)
+@@ -336,7 +338,10 @@ func TestPullDetectsConflicts(t *testing.T) {
+ 	env := setupTestEnv(t)
+ 	ctx := context.Background()
+ 
+-	writeFile(t, env.claudeDir, "history.jsonl", `{"event":"local-v1"}`)
++	// settings.json, not history.jsonl: history is union-merged on pull and
++	// never conflicts, so the generic conflict machinery is exercised with a
++	// plain synced file.
++	writeFile(t, env.claudeDir, "settings.json", `{"event":"local-v1"}`)
+ 
+ 	// Push to establish baseline
+ 	if _, err := env.syncer.Push(ctx); err != nil {
+@@ -344,7 +349,7 @@ func TestPullDetectsConflicts(t *testing.T) {
+ 	}
+ 
+ 	// Modify local file (simulating local changes)
+-	writeFile(t, env.claudeDir, "history.jsonl", `{"event":"local-v2"}`)
++	writeFile(t, env.claudeDir, "settings.json", `{"event":"local-v2"}`)
+ 
+ 	// Modify remote file (simulating another device pushing)
+ 	remoteContent := []byte(`{"event":"remote-v2"}`)
+@@ -354,7 +359,7 @@ func TestPullDetectsConflicts(t *testing.T) {
+ 	}
+ 	// Small delay to ensure remote timestamp is after the state's Uploaded time
+ 	time.Sleep(10 * time.Millisecond)
+-	if err := env.store.Upload(ctx, "history.jsonl.age", encrypted); err != nil {
++	if err := env.store.Upload(ctx, "settings.json.age", encrypted); err != nil {
+ 		t.Fatalf("Upload to mock failed: %v", err)
+ 	}
+ 
+@@ -368,7 +373,7 @@ func TestPullDetectsConflicts(t *testing.T) {
+ 	}
+ 
+ 	// Local file should be preserved
+-	got := readFile(t, env.claudeDir, "history.jsonl")
++	got := readFile(t, env.claudeDir, "settings.json")
+ 	if got != `{"event":"local-v2"}` {
+ 		t.Errorf("Local file should be preserved, got %q", got)
+ 	}
+@@ -380,7 +385,7 @@ func TestPullDetectsConflicts(t *testing.T) {
+ 	}
+ 	conflictFound := false
+ 	for _, e := range entries {
+-		if strings.HasPrefix(e.Name(), "history.jsonl.conflict.") {
++		if strings.HasPrefix(e.Name(), "settings.json.conflict.") {
+ 			conflictFound = true
+ 			// Verify conflict file contains remote content
+ 			data, _ := os.ReadFile(filepath.Join(env.claudeDir, e.Name()))
+@@ -534,20 +539,21 @@ func TestConflictCreatesConflictFile(t *testing.T) {
+ 	env := setupTestEnv(t)
+ 	ctx := context.Background()
+ 
+-	// Push initial version of history.jsonl
+-	writeFile(t, env.claudeDir, "history.jsonl", "line1\n")
++	// settings.json, not history.jsonl: history is union-merged on pull and
++	// never produces .conflict files.
++	writeFile(t, env.claudeDir, "settings.json", "line1\n")
+ 	if _, err := env.syncer.Push(ctx); err != nil {
+ 		t.Fatalf("Push failed: %v", err)
+ 	}
+ 
+ 	// Local appends
+-	writeFile(t, env.claudeDir, "history.jsonl", "line1\nline2-local\n")
++	writeFile(t, env.claudeDir, "settings.json", "line1\nline2-local\n")
+ 
+ 	// Remote also changed
+ 	remoteData := []byte("line1\nline2-remote\n")
+ 	encrypted, _ := env.syncer.encryptor.Encrypt(remoteData)
+ 	time.Sleep(10 * time.Millisecond)
+-	if err := env.store.Upload(ctx, "history.jsonl.age", encrypted); err != nil {
++	if err := env.store.Upload(ctx, "settings.json.age", encrypted); err != nil {
+ 		t.Fatalf("Upload to mock failed: %v", err)
+ 	}
+ 
+@@ -561,12 +567,12 @@ func TestConflictCreatesConflictFile(t *testing.T) {
+ 	if len(result.Conflicts) != 1 {
+ 		t.Fatalf("Expected 1 conflict, got %d", len(result.Conflicts))
+ 	}
+-	if result.Conflicts[0] != "history.jsonl" {
+-		t.Errorf("Expected conflict on history.jsonl, got %s", result.Conflicts[0])
++	if result.Conflicts[0] != "settings.json" {
++		t.Errorf("Expected conflict on settings.json, got %s", result.Conflicts[0])
+ 	}
+ 
+ 	// Local preserved
+-	local := readFile(t, env.claudeDir, "history.jsonl")
++	local := readFile(t, env.claudeDir, "settings.json")
+ 	if local != "line1\nline2-local\n" {
+ 		t.Errorf("Local should be preserved, got %q", local)
+ 	}
+@@ -575,7 +581,7 @@ func TestConflictCreatesConflictFile(t *testing.T) {
+ 	entries, _ := os.ReadDir(env.claudeDir)
+ 	found := false
+ 	for _, e := range entries {
+-		if strings.Contains(e.Name(), "history.jsonl.conflict.") {
++		if strings.Contains(e.Name(), "settings.json.conflict.") {
+ 			found = true
+ 			data, _ := os.ReadFile(filepath.Join(env.claudeDir, e.Name()))
+ 			if string(data) != "line1\nline2-remote\n" {

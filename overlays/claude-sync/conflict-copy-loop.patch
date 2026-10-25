@@ -1,0 +1,146 @@
+diff --git a/internal/sync/conflict_loop_test.go b/internal/sync/conflict_loop_test.go
+new file mode 100644
+index 0000000..c165486
+--- /dev/null
++++ b/internal/sync/conflict_loop_test.go
+@@ -0,0 +1,78 @@
++package sync
++
++import (
++	"context"
++	"os"
++	"strings"
++	"testing"
++	"time"
++)
++
++func conflictArtifacts(t *testing.T, dir, name string) []string {
++	t.Helper()
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		t.Fatalf("ReadDir failed: %v", err)
++	}
++	var found []string
++	for _, e := range entries {
++		if strings.HasPrefix(e.Name(), name+".conflict.") {
++			found = append(found, e.Name())
++		}
++	}
++	return found
++}
++
++func divergeSettings(t *testing.T, env *testEnv, local, remote string) {
++	t.Helper()
++	ctx := context.Background()
++	writeFile(t, env.claudeDir, "settings.json", "line1\n")
++	if _, err := env.syncer.Push(ctx); err != nil {
++		t.Fatalf("Push failed: %v", err)
++	}
++	writeFile(t, env.claudeDir, "settings.json", local)
++	encrypted, _ := env.syncer.encryptor.Encrypt([]byte(remote))
++	time.Sleep(10 * time.Millisecond)
++	if err := env.store.Upload(ctx, "settings.json.age", encrypted); err != nil {
++		t.Fatalf("Upload to mock failed: %v", err)
++	}
++}
++
++func TestRepeatedPullsParkOneConflictCopy(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++	divergeSettings(t, env, "line1\nlocal\n", "line1\nremote\n")
++
++	for i := 0; i < 3; i++ {
++		if _, err := env.syncer.Pull(ctx); err != nil {
++			t.Fatalf("Pull %d failed: %v", i, err)
++		}
++		// Artifact names have one-second resolution.
++		time.Sleep(1100 * time.Millisecond)
++	}
++
++	if found := conflictArtifacts(t, env.claudeDir, "settings.json"); len(found) != 1 {
++		t.Fatalf("Expected 1 conflict copy after repeated pulls, got %d: %v", len(found), found)
++	}
++}
++
++func TestIdenticalChangesAreNotAConflict(t *testing.T) {
++	env := setupTestEnv(t)
++	ctx := context.Background()
++	divergeSettings(t, env, "line1\nsame\n", "line1\nsame\n")
++
++	if _, err := env.syncer.Pull(ctx); err != nil {
++		t.Fatalf("Pull failed: %v", err)
++	}
++	if found := conflictArtifacts(t, env.claudeDir, "settings.json"); len(found) != 0 {
++		t.Fatalf("Expected no conflict copy for identical content, got %v", found)
++	}
++
++	result, err := env.syncer.Pull(ctx)
++	if err != nil {
++		t.Fatalf("Second pull failed: %v", err)
++	}
++	if len(result.Conflicts) != 0 {
++		t.Fatalf("Expected identical content to stay resolved, got conflicts %v", result.Conflicts)
++	}
++}
+diff --git a/internal/sync/sync.go b/internal/sync/sync.go
+index d6c7412..5c5763b 100644
+--- a/internal/sync/sync.go
++++ b/internal/sync/sync.go
+@@ -892,17 +892,52 @@ func (s *Syncer) resolveJSONLConflict(ctx context.Context, relativePath string,
+ }
+ 
+ func (s *Syncer) handleConflict(ctx context.Context, relativePath string, remoteObj storage.ObjectInfo) error {
+-	s.log("Conflict detected: %s (keeping local, saving remote as .conflict)", relativePath)
+-
+-	// Download remote version with conflict suffix
+-	conflictPath := relativePath + ".conflict." + time.Now().Format("20060102-150405")
+-	if err := s.downloadFile(ctx, conflictPath, remoteObj.Key, nil); err != nil {
++	remote, err := s.fetchDecoded(ctx, relativePath, remoteObj.Key)
++	if err != nil {
+ 		return fmt.Errorf("failed to save conflict file: %w", err)
+ 	}
++	fullPath := filepath.Join(s.claudeDir, relativePath)
++
++	// Both sides changed to the same bytes. Record that, or every later pull
++	// sees "remote newer, local changed" again and writes another copy.
++	if local, rerr := os.ReadFile(fullPath); rerr == nil && bytes.Equal(local, remote) {
++		if info, serr := os.Stat(fullPath); serr == nil {
++			s.state.UpdateFile(relativePath, info, HashBytes(local))
++			s.state.MarkUploaded(relativePath)
++		}
++		return nil
++	}
+ 
++	// The state is deliberately left alone below, so the conflict stays
++	// visible until it is resolved. That means it is re-detected on every
++	// pull, and a copy identical to the last one parked adds nothing.
++	if latest := latestConflictArtifact(fullPath); latest != "" {
++		if parked, rerr := os.ReadFile(latest); rerr == nil && bytes.Equal(parked, remote) {
++			return nil
++		}
++	}
++
++	s.log("Conflict detected: %s (keeping local, saving remote as .conflict)", relativePath)
++	conflictPath := fullPath + ".conflict." + time.Now().Format("20060102-150405")
++	if err := os.WriteFile(conflictPath, remote, 0600); err != nil {
++		return fmt.Errorf("failed to save conflict file: %w", err)
++	}
+ 	return nil
+ }
+ 
++// latestConflictArtifact returns the newest .conflict.<ts> copy of fullPath,
++// or "" when there is none. The timestamp suffix sorts chronologically.
++func latestConflictArtifact(fullPath string) string {
++	matches, _ := filepath.Glob(fullPath + ".conflict.*")
++	latest := ""
++	for _, m := range matches {
++		if conflictArtifactRe.MatchString(filepath.Base(m)) && m > latest {
++			latest = m
++		}
++	}
++	return latest
++}
++
+ // uploadManifest builds and uploads a manifest containing file mtimes from current state.
+ func (s *Syncer) uploadManifest(ctx context.Context) error {
+ 	manifest := FileManifest{
