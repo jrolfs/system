@@ -5,10 +5,12 @@ $username\
 $hostname\
 $shlvl\
 ${custom.directory}\
+${custom.worktree}\
 $git_branch\
 $hg_branch\
 $git_commit\
 $git_status\
+${custom.worktrunk}\
 $git_state\
 ${custom.pinentry}\
 $package\
@@ -116,6 +118,20 @@ shell = ["/run/current-system/sw/bin/zsh"]
 when = "$XDG_CONFIG_HOME/starship/is-pairing.sh"
 format = "[$symbol($output)]($style) [ ](purple) ·"
 style = ""
+
+[custom.worktree]
+command = "$XDG_CONFIG_HOME/starship/worktree.zsh"
+require_repo = true
+when = true
+format = "([$output](blue) )"
+shell = ["zsh", "--no-rcs"]
+
+[custom.worktrunk]
+command = "$XDG_CONFIG_HOME/starship/worktrunk.zsh"
+require_repo = true
+when = true
+format = "([$output](dimmed purple) )"
+shell = ["zsh", "--no-rcs"]
 
 [git_branch]
 style = "purple"
