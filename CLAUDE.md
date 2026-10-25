@@ -154,6 +154,7 @@ would otherwise have to be rediscovered.
 | `documentation/ARCADE.md` | Irulan's emulator station: ROM and BIOS layout, switching, scraping, controllers |
 | `documentation/IRULAN-MIGRATION.md` | moving Leia's services to Irulan: what goes where, the phases, and how Komodo spans both hosts |
 | `homebrew/README.md` | the tap itself, and bumping a cask with `cask-updater` |
+| `documentation/maintenance/` | dated write-ups of things that broke: what happened, why, the fix, what's still open, and a checklist for next time |
 
 ## Conventions
 
