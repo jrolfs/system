@@ -17,11 +17,10 @@
 # OAuth tokens are not part of any of this. Claude Code caches them per
 # machine after a one-time `/mcp` login, which is where they belong.
 #
-# Zed and opencode both have an integration too, and both are off for now
-# rather than forgotten. home-manager would generate the config file each of
-# them reads (Zed's settings.json, which is an out-of-store link because Zed
-# writes it back, and opencode's config beside a hand-written
-# opencode.jsonc), so turning either on means handing that file over first.
+# opencode takes the same servers through opencode.nix. Zed has an integration
+# too, and it's off for now rather than forgotten. home-manager would generate
+# Zed's settings.json, which is an out-of-store link because Zed writes it
+# back, so turning it on means handing that file over first.
 
 {
   programs.mcp = {

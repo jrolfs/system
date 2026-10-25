@@ -127,7 +127,6 @@
     pkgs.claude-code-router
 
     pkgs.opencode
-    pkgs.opencode-claude-auth
 
   ];
 }
