@@ -283,6 +283,10 @@ merge.squash = false
 post-start.direnv = "direnv allow && direnv exec . true"
 post-start.deps = "pnpm install"
 
+[projects."github.com/jrolfs/website"]
+post-start.direnv = "direnv allow && direnv exec . true"
+post-start.deps = "pnpm install"
+
 [projects."github.com/meterup/api"]
 post-start.direnv = "direnv allow && direnv exec . true"
 
