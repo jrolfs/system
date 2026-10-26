@@ -44,16 +44,20 @@ Assistant, Pi-hole, Traefik).
 
 ### Komodo with more than one server
 
-One Core, on Leia until the last phase. Every host Komodo deploys to runs a
-periphery, and each is a Komodo **Server named after its short hostname**:
-Leia's already connects as `leia`, and Irulan's connects as `irulan`.
+One Core, on Irulan, moved there ahead of the services
+([KOMODO-CORE-CUTOVER.md](KOMODO-CORE-CUTOVER.md)). Every host Komodo deploys
+to runs a periphery, and each is a Komodo **Server named after its short
+hostname**: Leia's connects as `leia`, and Irulan's as `irulan`.
 
-- **Both peripheries dial out.** Leia's connects to `ws://core:9120` on its
-  own Compose network. Irulan's is `services.komodo-periphery` (the nixpkgs
-  module, through `komodo.periphery.enable` in
-  `modules/nixos/services/komodo.nix`), connecting to
-  `https://komodo.rolfs.casa` through Traefik. Neither host listens for Core,
-  so Irulan's firewall opens nothing for it.
+- **Both peripheries dial out, straight to Core.** Irulan's is
+  `services.komodo-periphery` (the nixpkgs module, through
+  `komodo.periphery.enable` in `modules/nixos/services/komodo.nix`), connecting
+  to the Core beside it at `ws://127.0.0.1:9120`. Leia's connects to
+  `ws://irulan.rolfs.lan:9120`. Neither goes through Traefik, so either host
+  stays manageable while Traefik is down. Irulan opens 9120 for Leia's
+  periphery and for Traefik, which proxies the UI as `komodo.rolfs.casa`.
+  Until the cutover, Core is on Leia and Irulan's periphery reaches it through
+  `https://komodo.rolfs.casa`.
 - **Keys are generated, not distributed.** A periphery creates its key pair on
   first start (`/var/lib/komodo-periphery/keys` on Irulan) and Core stores the
   public half of an unknown connection as the server's *attempted* public key
@@ -131,7 +135,7 @@ interpolation (`[[NAME]]`) and files rendered on the host by the same
 | Pi-hole | Leia stack, macvlan `.1` | Irulan, stack `irulan-dns` | 5 | `/share/Docker/Containers/pihole/config`; MAC `02:42:a0:a0:e4:fd` |
 | Traefik | Leia stack | Irulan, stack `irulan-edge` | 6 | `traefik-acme` volume (`letsencrypt.json`, `step.json`) |
 | step-ca | Leia stack | Irulan, stack `irulan-edge` | 6 | `step-ca-data` volume, which is the CA itself |
-| Komodo Core and Mongo | Leia, own Compose project | Irulan, `komodo.core.enable` | 7 | Mongo database, `/config/keys` (Core's key pair) |
+| Komodo Core and Mongo | Leia, own Compose project | Irulan, `komodo.core.enable` | 7, ahead of the others | Mongo database, `/config/keys` (Core's key pair) |
 | Download stack | Leia stack | stays | n/a | n/a |
 | TubeSync | Leia stack | stays | n/a | writes `/share/Media/YouTube`, so it belongs with the downloaders |
 | Resilio Sync | QNAP app | stays | n/a | it syncs the storage it sits on |
@@ -331,21 +335,25 @@ gradually.
   back. At step 6, point the apex and the NAT rule at `10.10.10.12` again.
   Leia's Traefik keeps running until the soak ends.
 
-### Phase 7: Komodo Core
+### Phase 7: Komodo Core, done ahead of the services
 
-Last, because it is the thing that deploys everything else, and nothing
-depends on where it runs as long as `komodo.rolfs.casa` resolves to it.
+Planned last, but nothing depends on where Core runs, and moving it disturbs
+no service: containers are run by each host's Docker, not by Core, so the
+cutover costs only a few minutes without the Komodo UI and deploys. It moves
+first, with its own runbook: [KOMODO-CORE-CUTOVER.md](KOMODO-CORE-CUTOVER.md).
 
 - **State**: a `mongodump` from Leia restored into Irulan's Mongo, and Core's
   key pair from `/config/keys`. Leia's periphery pins Core's public key
-  (`PERIPHERY_CORE_PUBLIC_KEYS`), so a new key pair would lock it out.
+  (`PERIPHERY_CORE_PUBLIC_KEYS`), so a new key pair would lock it out, which is
+  why Irulan's Core won't start until Leia's `core.key` is in place.
 - **Leia's periphery** changes its core address from `ws://core:9120` to
-  `https://komodo.rolfs.casa`, since Core is no longer beside it.
-- **Secrets**: `komodo.secrets.env`. Render Core's and Mongo's environment
-  through `onepassword.templates` here, which the TODO in `komodo.nix` marks.
+  `ws://irulan.rolfs.lan:9120`. Leia's `leia/komodo` compose keeps Core and
+  Mongo behind a `core` profile, as the rollback.
+- **Secrets**: rendered from the `Komodo` 1Password item through
+  `onepassword.templates`, not placed by hand.
 - **Rollback**: start Core on Leia again. Its database is as of the cutover.
-- Afterwards, `/share/Docker/Containers/rolfs.lan` on Leia (the old checkout
-  Komodo deploys itself from) can finally go.
+- `/share/Docker/Containers/rolfs.lan` on Leia, the old checkout Leia's Komodo
+  stack runs from, still can't go: Leia's periphery runs from it.
 
 ## Open questions
 
