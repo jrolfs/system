@@ -31,9 +31,15 @@
     # ../../modules/nixos/services/step-ca.nix
   ];
 
-  # Core stays on Leia. Enabling it here would also need /etc/komodo/*.env
-  # placed by hand first, for the reason step-ca is commented out above.
+  # Core moves here from Leia, ahead of the services it deploys
+  # (documentation/KOMODO-CORE-CUTOVER.md). `activate` stays off until the
+  # database and Core's key pair have been carried over; flipping it is the
+  # cutover's last step on this host.
   komodo.periphery.enable = true;
+  komodo.core = {
+    enable = true;
+    activate = false;
+  };
 
   # Home Assistant and the Matter server, moved here from Leia in phase 4 of
   # documentation/IRULAN-MIGRATION.md. serveLegacyAddress gives Irulan
