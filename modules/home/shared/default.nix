@@ -48,7 +48,7 @@ let
     (builtins.readDir "${dotfiles}/.local/share/gh/extensions");
 in
 {
-  imports = [ ./atuin.nix ./claude-accounts.nix ./claude-sync.nix ./eza.nix ./gh.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./onepassword.nix ./opencode.nix ./secrets.nix ./ssh.nix ./starship.nix ]
+  imports = [ ./atuin.nix ./claude-accounts.nix ./claude-code.nix ./claude-sync.nix ./eza.nix ./gh.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./onepassword.nix ./opencode.nix ./secrets.nix ./ssh.nix ./starship.nix ]
     ++ lib.optional (builtins.pathExists ./hosts/${hostname}.nix) ./hosts/${hostname}.nix;
 
   home.username = userName;
@@ -111,9 +111,9 @@ in
     # the global conventions in CLAUDE.md simply aren't in effect on a
     # provisioned machine.
     #
-    # Out of store because these are written back to: `#` appends to CLAUDE.md,
-    # settings.json is rewritten whenever a permission is granted, and a saved
-    # slash command lands in commands/. On newt they were symlinks into the dot
+    # Out of store because these are written back to: `#` appends to CLAUDE.md
+    # and a saved slash command lands in commands/. settings.json is the
+    # exception, merged from claude-code.nix instead. On newt they were symlinks into the dot
     # castle's working tree, which is the same shape: edits and additions are a
     # git diff, not a rebuild.
     #
@@ -121,8 +121,6 @@ in
     # instead.
     ".claude/CLAUDE.md".source =
       config.lib.file.mkOutOfStoreSymlink "${live}/.claude/CLAUDE.md";
-    ".claude/settings.json".source =
-      config.lib.file.mkOutOfStoreSymlink "${live}/.claude/settings.json";
     ".claude/keybindings.json".source =
       config.lib.file.mkOutOfStoreSymlink "${live}/.claude/keybindings.json";
     ".claude/commands".source =
