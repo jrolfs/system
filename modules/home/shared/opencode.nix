@@ -59,8 +59,35 @@ in
 
     enableMcpIntegration = true;
 
-    settings.provider = lib.mapAttrs
-      (_: entry: { options.apiKey = "{file:${config.secrets.files.${entry}}}"; })
-      available;
+    settings = {
+      provider = lib.mapAttrs
+        (_: entry: { options.apiKey = "{file:${config.secrets.files.${entry}}}"; })
+        available;
+
+      # Something like Claude Code's auto mode. opencode 2 allows every action
+      # unless a rule says otherwise, so everything starts at `ask`, and the
+      # plugin reviews each ask before it reaches a prompt: fixed checks first
+      # (dangerous shell commands denied, common read-only ones allowed), then
+      # the session's own model with the conversation as context. Anything it
+      # can't decide, or any failure, stays a prompt.
+      #
+      # opencode has no model-checked mode of its own yet
+      # (anomalyco/opencode#37564). The plugin is pinned to an exact release
+      # because it is young and is trusted with approvals: read the changes
+      # before bumping it.
+      permissions = [
+        { action = "*"; resource = "*"; effect = "ask"; }
+      ];
+
+      plugins = [
+        {
+          package = "@mortz.prk/opencode-auto-mode@1.0.0";
+          options.classifiers = [
+            { type = "static"; }
+            { type = "llm"; }
+          ];
+        }
+      ];
+    };
   };
 }
