@@ -143,8 +143,9 @@ interpolation (`[[NAME]]`) and files rendered on the host by the same
 `home-assistant.nix` and `step-ca.nix` in `modules/nixos/services/` were
 written for a native move. This plan recommends containers for both instead
 (phases 4 and 6 say why), so treat those modules as the alternative rather
-than the plan of record. `home-assistant.nix` is already imported on Irulan,
-and runs an empty Home Assistant on 8123.
+than the plan of record. `home-assistant.nix` was imported on Irulan from
+its first scaffold, running a Home Assistant nobody had set up, with its
+onboarding page open on the LAN; it no longer is.
 
 ## Phases
 
@@ -276,8 +277,6 @@ in Nix first.
   config mounts") repeat under `irulan/home/`.
 - **Rollback**: stop on Irulan, start on Leia. Leia's copy is as of the
   cutover, so changes made on Irulan in between are lost unless copied back.
-- Remove `home-assistant.nix` from Irulan's imports before this phase. Its
-  empty instance would otherwise hold 8123.
 
 ### Phase 5: Pi-hole
 

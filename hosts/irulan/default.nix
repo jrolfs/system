@@ -19,7 +19,6 @@
     ../../modules/nixos/desktop
     ../../modules/nixos/arcade
 
-    ../../modules/nixos/services/home-assistant.nix
     ../../modules/nixos/services/komodo.nix
     ../../modules/nixos/services/plex.nix
 
