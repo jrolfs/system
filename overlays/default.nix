@@ -5,9 +5,8 @@ self: super:
 let
   # Pin packages whose current-revision build isn't in the binary cache yet.
   # `pin` prints the live cache status on each rebuild (see pin.nix) so we know
-  # when a pin is safe to remove. Currently no active pins — the mise pin was
-  # dropped 2026-08-12 once cache.nixos.org caught up (the helper reported it
-  # safe to remove). Kept imported for the next time a build lags the cache.
+  # when a pin is safe to remove. The mise pin was dropped 2026-08-12 once
+  # cache.nixos.org caught up (the helper reported it safe to remove).
   pin = import ./pin.nix super;
 
   # Install packages from the `nixpkgs/master` branch via `masterPkgs`,
@@ -27,6 +26,17 @@ in
 {
   spicetify-cli = masterPkgs.spicetify-cli;
 
+  # azure-cli depends on fabric, which nixpkgs marks broken against invoke 3
+  # (nixpkgs moved to invoke 3.0.3 by 2026-10-24). allowBroken turns that into
+  # a failed build rather than an evaluation error. The previous lock's
+  # nixpkgs built it, and the warning below says when current nixpkgs has a
+  # cached azure-cli again.
+  azure-cli = pin {
+    name = "azure-cli";
+    rev = "d54020a6ac3211e9f4201631bdf67678818c0cdf";
+    sha256 = "0znah7yvspa2dvaf0nb8dgm3lw7qd3n962a8zlqd47j5z55p5m2a";
+  };
+
   # mcp-nixos runs its pytest suite at build time. `test_read_text_file`
   # picks an arbitrary small text file out of the live /nix/store, reads it,
   # and asserts the output contains no "Error" — but plenty of store files
@@ -34,7 +44,17 @@ in
   # JS: SyntaxError, etc.), so the test fails non-deterministically depending
   # on which store path it happens to land on. The read itself works fine;
   # the assertion is just naive. Drop this once upstream fixes the test.
-  mcp-nixos = super.mcp-nixos.overridePythonAttrs (old: {
+  #
+  # Pinned as well: as of the 2026-10-24 nixpkgs, fastmcp 3.4.7 imports
+  # `McpError`, which mcp 2.2.0 renamed to `MCPError`, so mcp-nixos fails its
+  # import check. NixOS/nixpkgs#563493 (fastmcp 4.0.10) should fix it. Unlike
+  # recode below this is a build failure, so a cached current build does mean
+  # it's fixed, and pin's warning is the signal to drop it.
+  mcp-nixos = (pin {
+    name = "mcp-nixos";
+    rev = "d54020a6ac3211e9f4201631bdf67678818c0cdf";
+    sha256 = "0znah7yvspa2dvaf0nb8dgm3lw7qd3n962a8zlqd47j5z55p5m2a";
+  }).overridePythonAttrs (old: {
     disabledTests = (old.disabledTests or [ ]) ++ [ "test_read_text_file" ];
   });
 
