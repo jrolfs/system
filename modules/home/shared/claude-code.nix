@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 # Claude Code's user settings, declared here and merged into
 # ~/.claude/settings.json at activation rather than linked from the repo.
@@ -18,7 +18,29 @@
 # after the next switch unless it's added here. "Don't ask again" normally
 # writes to the project's settings.local.json instead, so this rarely bites.
 
+let
+  knownMarketplaces = "${config.home.homeDirectory}/.claude/plugins/known_marketplaces.json";
+
+  # The merge into known_marketplaces.json is a deep one, so a `directory`
+  # source written over the `github` entry Claude Code made for worktrunk
+  # would keep that entry's `repo` key alongside the new `path`. Dropping the
+  # GitHub entry first lets the declared one land clean. Safe to delete once
+  # every machine has switched past this change.
+  dropGitHubWorktrunk = pkgs.writeShellScript "drop-github-worktrunk-marketplace" ''
+    set -eu
+    [ -f "$1" ] || exit 0
+    ${lib.getExe pkgs.jq} -e '.worktrunk.source.source == "github"' "$1" >/dev/null || exit 0
+    ${lib.getExe pkgs.jq} 'del(.worktrunk)' "$1" > "$1.tmp"
+    mv "$1.tmp" "$1"
+  '';
+in
 {
+  home.activation.claudeCodeWorktrunkMarketplace =
+    lib.hm.dag.entryBetween [ "claudeCodeSettings" ] [ "linkGeneration" ] # bash
+      ''
+        run ${dropGitHubWorktrunk} "${knownMarketplaces}"
+      '';
+
   programs.claude-code = {
     enable = true;
 
@@ -28,6 +50,11 @@
     package = null;
 
     mutableSettings = true;
+
+    # From the same source as the `wt` in modules/shared/packages.nix, so the
+    # plugin moves with the binary it describes instead of tracking GitHub's
+    # main branch. `worktrunk@worktrunk` in enabledPlugins below turns it on.
+    marketplaces.worktrunk = pkgs.worktrunk.src;
 
     settings = {
       cleanupPeriodDays = 90;
@@ -97,11 +124,6 @@
         "typescript-lsp@claude-plugins-official" = true;
         "lua-lsp@claude-plugins-official" = true;
         "rust-analyzer-lsp@claude-plugins-official" = true;
-      };
-
-      extraKnownMarketplaces.worktrunk.source = {
-        source = "github";
-        repo = "max-sixty/worktrunk";
       };
     };
   };
