@@ -157,6 +157,84 @@ in
     meta.mainProgram = "claude-sync";
   };
 
+  # opencode's auto-mode plugin (github:mortezaPRK/opencode-auto-mode),
+  # patched and loaded as a local directory rather than from npm. 1.0.0 sends
+  # almost every action to a prompt (mortezaPRK/opencode-auto-mode#26): its
+  # shell guard asks for any `&&`, `|`, `2>&1` or `~` before a reviewer sees
+  # the command, and it skips review whenever a user message has attachments,
+  # which Zed's @-mentions are, or the session outgrows its transcript window.
+  # partial-context-and-shell-review routes both to the model reviewers
+  # instead. The reviewer is told when context is partial, and still asks when
+  # no user message is visible. api-key-file lets a decision stage read its
+  # key from a file rather than the environment of opencode's background
+  # server, which whichever client starts it first would have to carry. The
+  # plugin's tests are updated to match and pass.
+  #
+  # Dependencies follow claude-helpers below: a fixed-output derivation from
+  # the plugin's bun.lock, one hash per system. It writes
+  # $out/node_modules rather than the package tree itself, because bun
+  # resolves real paths, and a dependency finds its siblings by walking up to
+  # a directory named node_modules.
+  opencode-auto-mode =
+    let
+      version = "1.0.0";
+
+      src = super.applyPatches {
+        name = "opencode-auto-mode-${version}-source";
+        src = super.fetchFromGitHub {
+          owner = "mortezaPRK";
+          repo = "opencode-auto-mode";
+          rev = "v${version}";
+          hash = "sha256-t3NIlOh/srN8KEqcNXgF0OWaEpi54lWT/A05beM7cy0=";
+        };
+        patches = [
+          ./opencode-auto-mode/partial-context-and-shell-review.patch
+          ./opencode-auto-mode/api-key-file.patch
+        ];
+      };
+
+      manifest = super.runCommandLocal "opencode-auto-mode-manifest" { } ''
+        install -d $out
+        install -m644 ${src}/package.json ${src}/bun.lock $out/
+      '';
+
+      modules = super.stdenvNoCC.mkDerivation {
+        name = "opencode-auto-mode-node-modules-${version}";
+        src = manifest;
+        nativeBuildInputs = [ super.bun ];
+        dontFixup = true;
+        buildPhase = ''
+          export HOME=$TMPDIR
+          export BUN_INSTALL_CACHE_DIR=$TMPDIR/cache
+          bun install --frozen-lockfile --production --ignore-scripts --no-progress
+        '';
+        installPhase = ''
+          install -d $out
+          cp -R node_modules $out/node_modules
+        '';
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        outputHash =
+          let
+            hashes = {
+              aarch64-darwin =
+                "sha256-AYAOoiL7G/KNEwJPKDYMo3mvIX4hsBO6E7PoI9stHzI=";
+              x86_64-linux =
+                "sha256-TR4DSP4PVQrOyWLCAl6I8+2Ad5F9PLJ26hn3GQqJH84=";
+            };
+            inherit (super.stdenv.hostPlatform) system;
+          in
+          hashes.${system} or (throw
+            ("opencode-auto-mode has no node_modules hash for ${system}; "
+              + "build it there and record the hash nix reports"));
+      };
+    in
+    super.runCommandLocal "opencode-auto-mode-${version}" { } ''
+      cp -R ${src} $out
+      chmod u+w $out
+      ln -s ${modules}/node_modules $out/node_modules
+    '';
+
   # The Claude Code helper scripts kept in dotfiles/home/.claude/bin, built into
   # a package so they land on PATH with the rest of the profile instead of
   # needing ~/.claude/bin added to it.

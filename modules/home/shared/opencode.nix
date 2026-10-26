@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 
 # opencode, set up the way Claude Code is: settings generated here, MCP servers
 # shared through programs.mcp (mcp.nix), and the binary installed system-wide by
@@ -49,6 +49,35 @@ let
   };
 
   available = lib.filterAttrs (_: entry: config.secrets.files ? ${entry}) keys;
+
+  # The auto-mode review pipeline, cheapest first. Each stage either decides
+  # (allow, deny or ask) or abstains to the next, and if every stage abstains
+  # the action is a prompt.
+  #
+  # - static: fixed rules, no network. Denies known-dangerous commands and
+  #   allows plain read-only ones.
+  # - TypeSafe's Jev, where this host has the key: a typed decision model
+  #   that answers with calibrated confidence in tens of milliseconds. Below
+  #   0.9 confidence an allow abstains and a deny asks, so it only settles
+  #   clear cases. It receives the pending action and the visible
+  #   transcript, so it's on the personal machines only.
+  # - Claude Sonnet as the reviewer of last resort, where this host has the
+  #   Anthropic key: the plugin's two-pass review (quick triage, then
+  #   reasoning on anything flagged) under its built-in policy, which
+  #   follows Claude Code's auto mode. Pinned rather than following the
+  #   session's model so the judge stays the same whichever model is doing
+  #   the work. Without the key it falls back to the session's model.
+  reviewers =
+    [ { type = "static"; } ]
+    ++ lib.optional (config.secrets.files ? typesafe-api-key) {
+      type = "decision";
+      model = "typesafe-ai/jev-latest";
+      apiKeyFile = config.secrets.files.typesafe-api-key;
+    }
+    ++ [
+      ({ type = "llm"; }
+        // lib.optionalAttrs (available ? anthropic) { model = "anthropic/claude-sonnet-5-5"; })
+    ];
 in
 {
   programs.opencode = {
@@ -72,20 +101,21 @@ in
       # can't decide, or any failure, stays a prompt.
       #
       # opencode has no model-checked mode of its own yet
-      # (anomalyco/opencode#37564). The plugin is pinned to an exact release
-      # because it is young and is trusted with approvals: read the changes
-      # before bumping it.
+      # (anomalyco/opencode#37564). The plugin is a patched build of an exact
+      # release (pkgs.opencode-auto-mode in overlays/default.nix, which says
+      # what the patch changes), loaded from its store path. It is young and is
+      # trusted with approvals: read the changes before bumping it.
       permissions = [
         { action = "*"; resource = "*"; effect = "ask"; }
       ];
 
       plugins = [
         {
-          package = "@mortz.prk/opencode-auto-mode@1.0.0";
-          options.classifiers = [
-            { type = "static"; }
-            { type = "llm"; }
-          ];
+          package = "${pkgs.opencode-auto-mode}";
+          options = {
+            classifiers = reviewers;
+            auditLog = true;
+          };
         }
       ];
     };

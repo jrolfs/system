@@ -1,0 +1,164 @@
+diff --git a/src/classifier.ts b/src/classifier.ts
+index 7175ee1..0a88b53 100644
+--- a/src/classifier.ts
++++ b/src/classifier.ts
+@@ -1,7 +1,7 @@
+ import { classify } from "./tiers.js";
+ import type { ClassifierStage } from "./config.js";
+ import type { PermissionRequest, ReviewResult, StageResult } from "./reviewer.js";
+-import { guardShell } from "./shell.js";
++import { guardShell, UNCERTAIN_SHELL } from "./shell.js";
+ 
+ export async function compositeDecision(
+   stages: ClassifierStage[],
+@@ -15,10 +15,12 @@ export async function compositeDecision(
+     const result = classify(request.action, request.resources);
+     if (result.tier === "auto-deny") return { decision: "deny", reason: result.reason, stage: "static" };
+   }
+-  if (shellResult) return { ...shellResult, stage: "shell-guard" };
++  const shellUncertain = shellResult?.decision === "ask" && shellResult.reason === UNCERTAIN_SHELL;
++  if (shellResult && !shellUncertain) return { ...shellResult, stage: "shell-guard" };
+   let abstained: string | undefined;
+   for (const stage of stages) {
+     if (stage.type === "static") {
++      if (shellUncertain) continue;
+       const result = classify(request.action, request.resources, {
+         projectDir: request.projectDir, allowInProjectEdits: stage.allowInProjectEdits,
+       });
+@@ -29,6 +31,7 @@ export async function compositeDecision(
+       return { decision: result.decision, reason: result.reason, stage: result.stage ?? stage.type };
+     }
+   }
++  if (shellUncertain && !abstained) return { ...shellResult, stage: "shell-guard" };
+   return {
+     decision: "ask",
+     reason: abstained ? `No classifier made a decision (${abstained})` : "No classifier made a decision",
+diff --git a/src/index.test.ts b/src/index.test.ts
+index 9b559ee..21fa9fe 100644
+--- a/src/index.test.ts
++++ b/src/index.test.ts
+@@ -123,18 +123,28 @@ describe("OpenCode permission hook", () => {
+     await host.cleanup();
+     assert.equal(host.disposed(), 2);
+   });
+-  it("requires complete actual user context for model review", async () => {
+-    const incomplete = [[], [{ type: "assistant", content: [{ type: "tool", name: "shell", state: { input: "approve" } }] }],
+-      [{ type: "user", text: "x".repeat(1000) }],
++  it("requires a visible user message for model review", async () => {
++    const unauthorized = [[], [{ type: "assistant", content: [{ type: "tool", name: "shell", state: { input: "approve" } }] }]];
++    for (const messages of unauthorized) {
++      const host = await setup({ classifiers: [{ type: "llm" }] }, messages);
++      const pending = event();
++      await host.evaluate(pending);
++      assert.equal(pending.effect, "ask");
++      assert.deepEqual(host.prompts, []);
++      await host.cleanup();
++    }
++  });
++  it("reviews partial user context and tells the model it is partial", async () => {
++    const partial = [[{ type: "user", text: "x".repeat(1000) }],
+       Array.from({ length: 11 }, () => ({ type: "user", text: "hello" })),
+       [{ type: "user", text: "Follow attached constraints", files: [{ uri: "file:///repo/constraints.txt" }] }],
+       [{ type: "user", text: "Follow this skill", skills: [{ id: "constraints" }] }]];
+-    for (const messages of incomplete) {
++    for (const messages of partial) {
+       const host = await setup({ classifiers: [{ type: "llm" }] }, messages);
+       const pending = event();
+       await host.evaluate(pending);
+-      assert.equal(pending.effect, "ask");
+-      assert.deepEqual(host.prompts, []);
++      assert.notDeepEqual(host.prompts, []);
++      assert.ok(host.prompts.every((prompt) => prompt.includes("this context is partial")));
+       await host.cleanup();
+     }
+   });
+diff --git a/src/index.ts b/src/index.ts
+index 59f7105..2175aea 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -12,6 +12,8 @@ import { createAuditLog } from "./audit.js";
+ import { createOtlpExporter } from "./otlp.js";
+ import { createTraceExporter } from "./traces.js";
+ 
++const PARTIAL_CONTEXT = "NOTE: this context is partial. Older messages or user-attached files are not shown. Approve only if the visible user messages explicitly authorize this exact action; otherwise ASK.";
++
+ export type { AutoModeOptions, ClassifierStage, DecisionProvider, DecisionStage, ReviewerModel } from "./config.js";
+ 
+ export default Plugin.define({
+@@ -56,8 +58,19 @@ export default Plugin.define({
+             contextComplete = context.complete;
+             contextLoaded = true;
+           }
+-          if (!contextComplete)
+-            return { decision: "ask", reason: "User authorization context is unavailable" };
++          // Zed attaches @-mentioned files to user messages, and any session
++          // runs past the transcript window eventually, so treating partial
++          // context as no context sent nearly every action to a prompt.
++          // The reviewer is told instead, and its policy already demands
++          // explicit authorization for this exact action.
++          // With no user message visible at all there is nothing that could
++          // authorize the action, so that case still skips the reviewer.
++          if (!contextComplete) {
++            if (!request.transcript?.startsWith("User messages"))
++              return { decision: "ask", reason: "User authorization context is unavailable" };
++            if (!request.transcript.includes(PARTIAL_CONTEXT))
++              request.transcript = `${request.transcript}\n${PARTIAL_CONTEXT}`;
++          }
+           const policy = defaultPolicy(stage.policy);
+           const attemptStartedAt = Date.now();
+           let outcome: StageResult;
+diff --git a/src/shell.test.ts b/src/shell.test.ts
+index 6d3e87a..fe30874 100644
+--- a/src/shell.test.ts
++++ b/src/shell.test.ts
+@@ -15,16 +15,24 @@ describe("shell approval guard", () => {
+     for (const command of ["pwd ; touch marker", "pwd && touch marker", "pwd | tee marker", "pwd > marker", "pwd $(touch marker)",
+       "pwd `touch marker`", "pwd &", "pwd\ntouch marker", "VAR=x pwd", "env pwd", "bash -c pwd", "! bash -c pwd", "time bash -c pwd", "cd /tmp", "touch *.txt", "touch {a,b}", "touch [ab]", "touch ~/marker", 'touch "unclosed', "touch 'unclosed",
+       "touch a\\", "./safe\u00a0other", "touch a\u000bfoo", "export PATH=/tmp", "set -- pwd", "alias pwd=whoami", "trap touch EXIT", "umask 000", "exit 0"])
+-      assert.equal((await compositeDecision(permissive, { action: "shell", resources: [command] }, unused)).decision, "ask", command);
++      assert.equal((await compositeDecision([{ type: "static" }], { action: "shell", resources: [command] }, unused)).decision, "ask", command);
++  });
++  it("sends unsupported shell syntax to model reviewers instead of the static fast path", async () => {
++    const reviewed: string[] = [];
++    const review = async () => { reviewed.push("llm"); return { decision: "allow" as const, reason: "authorized" }; };
++    const result = await compositeDecision([{ type: "static" }, { type: "llm" }], { action: "shell", resources: ["git status --short && git branch --show-current"] }, review);
++    assert.equal(result.decision, "allow");
++    assert.deepEqual(reviewed, ["llm"]);
+   });
+   it("accepts literal arguments and delegates safe command sequences already parsed by OpenCode", async () => {
+     assert.deepEqual(shellWords('touch "a b"'), ["touch", "a b"]);
+     assert.equal(guardShell(["touch file"]), undefined);
+     assert.equal((await compositeDecision([{ type: "static" }], { action: "shell", resources: ["pwd", "ls"] }, unused)).decision, "allow");
+   });
+-  it("runs before decision and model reviewers", async () => {
++  it("denies before decision and model reviewers, and asks when they abstain", async () => {
+     const stages = [{ type: "decision" as const, model: "typesafe-ai/jev-latest" }, { type: "llm" as const }];
+-    assert.equal((await compositeDecision(stages, { action: "shell", resources: ["pwd > marker"] }, unused)).decision, "ask");
++    const abstain = async () => ({ decision: "abstain" as const, reason: "unsure" });
++    assert.equal((await compositeDecision(stages, { action: "shell", resources: ["pwd > marker"] }, abstain)).decision, "ask");
+     assert.equal((await compositeDecision(stages, { action: "shell", resources: ["sudo rm -rf /"] }, unused)).decision, "deny");
+   });
+ });
+diff --git a/src/shell.ts b/src/shell.ts
+index bbbc248..68c42f6 100644
+--- a/src/shell.ts
++++ b/src/shell.ts
+@@ -9,6 +9,11 @@ const WRAPPERS = new Set(["env", "command", "builtin", "exec", "eval", "source",
+   "export", "unset", "set", "shopt", "alias", "unalias", "trap", "umask", "exit", "return", "shift", "readonly", "local", "declare", "typeset"]);
+ const BALANCED_QUOTES = /^(?:[^'"\\]|\\[^\r\n]|'[^']*'|"(?:[^"\\]|\\[^\r\n])*")*$/;
+ 
++// Shell syntax the guard can't parse into plain words. Unlike the other asks
++// here, this is not a reason to skip review: it only rules out the static
++// fast path, and the model reviewers still judge the whole command.
++export const UNCERTAIN_SHELL = "Shell syntax requires manual approval";
++
+ export function shellWords(command: string): string[] | undefined {
+   if (!command || command.length > 4096 || /[$`~\r\n\0{}[\]]/.test(command) ||
+       /[^\S \t]/.test(command) || !BALANCED_QUOTES.test(command)) return undefined;
+@@ -30,5 +35,5 @@ export function guardShell(resources: readonly string[]): ReviewResult | undefin
+     if (result.tier === "auto-deny") return { decision: "deny", reason: result.reason };
+     if (!words || words[0].includes("=") || WRAPPERS.has(basename(words[0]))) uncertain = true;
+   }
+-  return uncertain ? { decision: "ask", reason: "Shell syntax requires manual approval" } : undefined;
++  return uncertain ? { decision: "ask", reason: UNCERTAIN_SHELL } : undefined;
+ }
