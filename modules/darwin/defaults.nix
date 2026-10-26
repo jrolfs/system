@@ -370,13 +370,4 @@ in
   time.timeZone = "America/Los_Angeles";
 
   system.startup.chime = false;
-
-  # systemsetup writes these to both power sources at once, so only the values
-  # newt uses for both can move over. Its computer-sleep setting differs by
-  # source — never on AC, but not on battery — which this cannot express, so it
-  # stays out rather than getting flattened into a laptop that never sleeps.
-  power.sleep = {
-    display = 45;
-    harddisk = 10;
-  };
 }
