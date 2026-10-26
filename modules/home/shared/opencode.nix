@@ -110,6 +110,10 @@ in
 
     enableMcpIntegration = true;
 
+    # The terminal client's settings, cli.json in opencode 2 (tui.json was the
+    # old client's). The `system` theme takes the terminal's own colors.
+    cli.theme.name = "system";
+
     settings = {
       providers = lib.mapAttrs (_: entry: { settings.apiKey = "{file:${files.${entry}}}"; }) available
         // lib.optionalAttrs foundry { foundry = foundryProvider; };
