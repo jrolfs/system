@@ -161,6 +161,11 @@
   "semantic_tokens": "combined",
   "agent_servers": {
     "OpenCode": {
+      "default_config_options": {
+        "effort": "high",
+        "model": "anthropic/claude-opus-5-5",
+        "mode": "build"
+      },
       "type": "custom",
       "command": "/run/current-system/sw/bin/opencode",
       "args": ["acp"]
