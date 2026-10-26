@@ -27,10 +27,9 @@
     enable = true;
 
     # `enabled = false` on a server leaves it out entirely instead of passing it
-    # through. home-manager's own handling of that flag disables a Claude Code
-    # server by generating ~/.claude/settings.json, and that file is already an
-    # out-of-store link into the repo (default.nix), so the build fails on the
-    # conflicting target.
+    # through. home-manager's own handling of that flag adds the server to
+    # `disabledMcpjsonServers` in ~/.claude/settings.json, which doesn't hide a
+    # server that arrives through a plugin, as these do.
     servers = lib.filterAttrs (_: server: server.enabled or null != false) {
       airtable.url = "https://mcp.airtable.com/mcp";
       figma.url = "https://mcp.figma.com/mcp";
@@ -46,14 +45,5 @@
     };
   };
 
-  programs.claude-code = {
-    enable = true;
-
-    # Installed system-wide by modules/shared/packages.nix. Null also tells the module
-    # to assume a current Claude Code, so it takes the personal-plugin route
-    # rather than wrapping the binary in `--plugin-dir`.
-    package = null;
-
-    enableMcpIntegration = true;
-  };
+  programs.claude-code.enableMcpIntegration = true;
 }
