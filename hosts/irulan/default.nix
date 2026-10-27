@@ -39,6 +39,10 @@
   agentVm = {
     enable = true;
     externalInterface = "enp3s0";
+    telegramBot = {
+      enable = true;
+      allowedUserId = 6908664565;
+    };
   };
 
   # Attached to a TV with a keyboard and trackpad, so it boots to a desktop

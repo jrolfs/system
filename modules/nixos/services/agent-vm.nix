@@ -87,6 +87,15 @@ in
       type = lib.types.str;
       description = "The host interface the guest's traffic leaves through.";
     };
+
+    telegramBot = {
+      enable = lib.mkEnableOption "a Telegram client for the VM's opencode server";
+
+      allowedUserId = lib.mkOption {
+        type = lib.types.int;
+        description = "The one Telegram user the bot answers.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -242,6 +251,49 @@ in
         ExecStartPre = proxyConfig;
         ExecStart = "${pkgs.nginx}/bin/nginx -e stderr -c %t/agent-vm-key-proxy/nginx.conf -p %t/agent-vm-key-proxy";
         Restart = "on-failure";
+        RestartSec = 10;
+      };
+    };
+
+    # opencode from Telegram, for starting and following the VM's sessions
+    # from a phone. It polls Telegram and calls the VM's server, and listens on
+    # nothing. Only the configured user gets an answer.
+    #
+    # It runs here rather than in the guest because it needs the bot token,
+    # and the guest never holds a credential. That puts it on a different
+    # filesystem from the server, so /open, which browses folders on the bot's
+    # machine, is pointed at an empty directory; projects come from /projects,
+    # which asks the server. Its state, logs and the local-commands directory
+    # it would run shell commands from live under its own XDG_CONFIG_HOME,
+    # where nothing creates commands.
+    systemd.services.agent-vm-telegram-bot = lib.mkIf cfg.telegramBot.enable {
+      description = "Telegram client for the agent microVM's opencode";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" "microvm@${name}.service" ];
+      environment = {
+        XDG_CONFIG_HOME = "/var/lib/agent-vm-telegram-bot";
+        TELEGRAM_ALLOWED_USER_ID = toString cfg.telegramBot.allowedUserId;
+        # No IPv6 route out of this host.
+        TELEGRAM_FORCE_IPV4 = "true";
+        OPENCODE_SERVER_VERSION = "v2";
+        OPENCODE_API_URL = "http://${guestAddress}:${toString opencodePort}";
+        OPENCODE_MODEL_PROVIDER = "anthropic";
+        OPENCODE_MODEL_ID = "claude-opus-5-5";
+        OPENCODE_AUTO_RESTART_ENABLED = "false";
+        OPEN_BROWSER_ROOTS = "/var/empty";
+      };
+      script = ''
+        TELEGRAM_BOT_TOKEN=$(cat /home/${userName}/.config/api-keys/telegram-opencode-bot)
+        OPENCODE_SERVER_PASSWORD=$(cat ${state}/opencode/password)
+        export TELEGRAM_BOT_TOKEN OPENCODE_SERVER_PASSWORD
+        exec ${lib.getExe pkgs.opencode-telegram-bot} start --mode installed
+      '';
+      serviceConfig = {
+        User = userName;
+        StateDirectory = "agent-vm-telegram-bot";
+        StateDirectoryMode = "0700";
+        Restart = "always";
         RestartSec = 10;
       };
     };

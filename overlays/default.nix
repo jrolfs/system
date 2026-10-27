@@ -235,6 +235,24 @@ in
       ln -s ${modules}/node_modules $out/node_modules
     '';
 
+  # A Telegram client for opencode (github:grinev/opencode-telegram-bot),
+  # run on Irulan against the agent VM's server
+  # (modules/nixos/services/agent-vm.nix). Not in nixpkgs. Built from its
+  # tagged source rather than run through `npx …@latest`, so the version only
+  # moves with this file.
+  opencode-telegram-bot = super.buildNpmPackage rec {
+    pname = "opencode-telegram-bot";
+    version = "0.26.5";
+    src = super.fetchFromGitHub {
+      owner = "grinev";
+      repo = "opencode-telegram-bot";
+      rev = "v${version}";
+      hash = "sha256-Mjku5+XNECO0kQNX2zls18IAlf8kJElaFwTTHfo9xuU=";
+    };
+    npmDepsHash = "sha256-eDXmrs3c8uktWq/rZAVdtemoq/5Fo/fn6G02B4sM9nE=";
+    meta.mainProgram = "opencode-telegram";
+  };
+
   # The Claude Code helper scripts kept in dotfiles/home/.claude/bin, built into
   # a package so they land on PATH with the rest of the profile instead of
   # needing ~/.claude/bin added to it.
