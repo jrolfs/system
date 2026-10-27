@@ -1,0 +1,101 @@
+name: build
+
+# Builds every host's system closure on its own platform. Nothing is activated:
+# a passing run means `nix-switch` would get as far as activation, which is
+# where the failures this catches (an unbuildable package after a lock bump, an
+# evaluation error in a module only one host imports) otherwise surface.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # jrolfs/bootstrap calls this with its own revision overridden in, so a
+  # bootstrap change that would break these hosts fails there, before it is
+  # merged and long before this flake's lock picks it up.
+  workflow_call:
+    inputs:
+      override-input:
+        description: "`<input> <flake-ref>`, passed to --override-input"
+        type: string
+        default: ""
+
+# Named rather than `github.workflow`, which is the caller's name under
+# workflow_call: a caller and callee sharing a group cancel each other.
+concurrency:
+  group: system-build-${{ github.repository }}-${{ github.ref }}-${{ inputs.override-input }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.host }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: ala
+            runner: macos-26
+            attribute: darwinConfigurations.ala.system
+          - host: adrian
+            runner: macos-26
+            attribute: darwinConfigurations.adrian.system
+          - host: irulan
+            runner: ubuntu-24.04
+            attribute: nixosConfigurations.irulan.config.system.build.toplevel
+    steps:
+      # The Linux runner's root volume has about 20GB free, which Irulan's
+      # closure outgrows. This puts /nix on the runner's spare /mnt disk instead;
+      # `holster` skips deleting preinstalled software, which takes minutes and
+      # isn't needed for the space. It must run before Nix is installed, and it
+      # skips itself on macOS.
+      - uses: wimpysworld/nothing-but-nix@v10
+        with:
+          hatchet-protocol: holster
+
+      # Lix rather than CppNix, because Lix is what every host runs
+      # (modules/shared/nix.nix) and the two have already diverged once on this
+      # flake (fetchClosure). The Lix installer leaves the darwin sandbox off,
+      # which sidecar.nix and kaset.nix depend on to reach the system Xcode.
+      - uses: samueldr/lix-gha-installer-action@v2026-06-15
+
+      # Explicit because under workflow_call the default is the caller's
+      # repository. Run from here, it still checks out the triggering ref.
+      - uses: actions/checkout@v7
+        with:
+          repository: jrolfs/system
+
+      - name: Build
+        env:
+          ATTRIBUTE: ${{ matrix.attribute }}
+          OVERRIDE: ${{ inputs.override-input }}
+        run: |
+          override=()
+          if [ -n "$OVERRIDE" ]; then
+            read -r input reference <<< "$OVERRIDE"
+            override=(--override-input "$input" "$reference")
+          fi
+          nix build ".#$ATTRIBUTE" "${override[@]}" \
+            --print-build-logs --keep-going --no-link
+
+      # bootstrap's NixOS installer path builds this attribute to partition the
+      # disk before anything is installed (src/nixos.ts in jrolfs/bootstrap),
+      # so a host that stops exposing it can't be provisioned from scratch.
+      # Evaluating it is enough; disko only builds it on the target.
+      - name: Evaluate the disko script bootstrap provisions with
+        if: startsWith(matrix.attribute, 'nixosConfigurations.')
+        env:
+          HOST: ${{ matrix.host }}
+          OVERRIDE: ${{ inputs.override-input }}
+        run: |
+          override=()
+          if [ -n "$OVERRIDE" ]; then
+            read -r input reference <<< "$OVERRIDE"
+            override=(--override-input "$input" "$reference")
+          fi
+          nix eval --raw "${override[@]}" \
+            ".#nixosConfigurations.$HOST.config.system.build.diskoScript.drvPath"
