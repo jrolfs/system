@@ -21,6 +21,7 @@
 
     ../../modules/nixos/services/komodo.nix
     ../../modules/nixos/services/plex.nix
+    ../../modules/nixos/services/agent-vm.nix
 
     # Needs state that still lives on Leia and is placed by hand before first
     # start (the CA data and its intermediate password). Imported without it,
@@ -32,6 +33,13 @@
   # Core stays on Leia. Enabling it here would also need /etc/komodo/*.env
   # placed by hand first, for the reason step-ca is commented out above.
   komodo.periphery.enable = true;
+
+  # A microVM running opencode's server, for agents to work in without the
+  # rest of this machine in reach.
+  agentVm = {
+    enable = true;
+    externalInterface = "enp3s0";
+  };
 
   # Attached to a TV with a keyboard and trackpad, so it boots to a desktop
   # even though most of what it runs is headless, with the emulator station

@@ -29,6 +29,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # MicroVMs declared as NixOS configuration and run by systemd, for the
+    # agent sandbox on Irulan (modules/nixos/services/agent-vm.nix).
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Glide packaged for nix, plus a home-manager module built on
     # home-manager's own mkFirefoxModule factory. The packages are not used to
     # install Glide (see modules/home/darwin/browsers.nix for why Homebrew still owns
