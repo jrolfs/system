@@ -32,6 +32,17 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # hid_apple drives the Magic Keyboard, over USB and Bluetooth alike.
+    # fnmode=1 puts media keys on the top row and F1–F12 behind Fn, as on a
+    # Mac. The kernel's default, 3, only picks that for keyboards it recognises
+    # as Apple's, and falls back to F-keys first for anything else, so this pins
+    # it rather than trusting the device table to know every model. ⌘ and ⌥
+    # already arrive as Super and Alt, which is what layout.kbd and the Hyprland
+    # bindings expect, so nothing is swapped.
+    boot.extraModprobeConfig = ''
+      options hid_apple fnmode=1
+    '';
+
     services.kanata = {
       enable = true;
 

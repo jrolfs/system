@@ -46,6 +46,9 @@
   # beside it (documentation/ARCADE.md).
   desktop.enable = true;
   keyboard.enable = true;
+  # The Magic Keyboard and Trackpad pair over it, and have to work at the
+  # console as well as in the desktop.
+  hardware.bluetooth.enable = true;
   arcade.enable = true;
 
   # Boots to the text console until the desktop's first-boot crash is fixed.
