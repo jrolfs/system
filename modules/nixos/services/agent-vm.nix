@@ -206,6 +206,12 @@ in
 
     systemd.network = {
       enable = true;
+
+      # networkd manages the tap alone, and the tap is not required for being
+      # online, so its wait-online service had nothing it could ever wait for
+      # and failed every switch after its two-minute timeout.
+      wait-online.enable = false;
+
       networks."30-${tap}" = {
         matchConfig.Name = tap;
         address = [ "${hostAddress}/32" ];
@@ -214,6 +220,14 @@ in
       };
     };
     networking.dhcpcd.denyInterfaces = [ "vm-*" ];
+
+    # Enabling networkd brings systemd-resolved with it, which takes
+    # /etc/resolv.conf over. dhcpcd still owns the uplink and has no way to
+    # hand resolved the router's DNS servers, so resolved fell back to public
+    # ones, every rolfs.lan name stopped resolving (Leia's NFS media share among
+    # them), and 1Password was unreachable for the secrets step in the gap while
+    # it started. The guest names its own DNS servers, so nothing here needs it.
+    services.resolved.enable = false;
 
     networking.nat = {
       enable = true;
