@@ -19,7 +19,7 @@
 
   imports = [
     ./apps.nix
-    ./greeter.nix
+    ./greeter
     ./input.nix
     ./session.nix
     ./stylix.nix
