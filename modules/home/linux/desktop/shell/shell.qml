@@ -24,6 +24,7 @@ import "modules/polkit"
 import "modules/wallpaper"
 import "modules/settings"
 import "modules/screencorners"
+import "modules/keys"
 
 ShellRoot {
     // Flip any "mode" and morph the island into its status indicator (ringed icon +
@@ -125,6 +126,17 @@ ShellRoot {
         name: "logout"
         description: "Toggle the power menu"
         onPressed: GlobalState.toggleLogout()
+    }
+
+    // Keyboard help: the cheat sheet that floats while a Hyprland submap is active, and the
+    // full shortcut sheet. Both list what `hyprctl binds -j` reports, so binds need a
+    // description to appear (see services/Keybinds.qml).
+    SubmapOverlay {}
+    ShortcutSheet {}
+    GlobalShortcut {
+        name: "keys"
+        description: "Toggle the keyboard shortcut sheet"
+        onPressed: Keybinds.toggleSheet()
     }
 
     // Lock screen. Kicked off by GlobalState.lockRequested() (from the power menu,
@@ -256,6 +268,14 @@ ShellRoot {
         function toggle() { GlobalState.toggleIsland(); }
         function open() { GlobalState.islandHold = true; }
         function close() { GlobalState.islandHold = false; }
+    }
+
+    // qs ipc call keys toggle|open|close: the keyboard shortcut sheet
+    IpcHandler {
+        target: "keys"
+        function toggle() { Keybinds.toggleSheet(); }
+        function open() { Keybinds.openSheet(); }
+        function close() { Keybinds.closeSheet(); }
     }
 
     // qs ipc call settings toggle|open|close

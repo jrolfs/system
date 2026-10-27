@@ -140,105 +140,194 @@ lib.mkIf (osConfig.desktop.enable or false) {
       ${lib.concatMapStringsSep "\n" (namespace: ''
         hl.layer_rule({ match = { namespace = "^${namespace}$" }, blur = true, ignore_alpha = 0.2 })'') blurredLayers}
 
+      -- Every binding carries a description, "Group · Label", which is what
+      -- the shell's shortcut sheet (Hyper+?) and the window mode's hint panel
+      -- read back out of `hyprctl binds`, so neither can drift from this file.
+      local function about(group, label, flags)
+        local options = flags or {}
+        options.description = group .. " · " .. label
+        return options
+      end
+
       -- The shell ------------------------------------------------------------
       --
-      --   ⌘Space            launcher (`:` for the clipboard history)
-      --   ⌘⌥Space           Vicinae, for its extensions
-      --   Hyper+C           control center
-      --   Hyper+D           calendar
-      --   Hyper+,           settings
-      --   Hyper+W           wallpaper picker
-      --   Hyper+N           night light
-      --   Hyper+G           game mode
-      --   ⌃⌥Delete          log out, restart, shut down (Delete is fn⌫)
-      --   ⌘Esc              lock
-      --
       -- Hyper+letter because ⌘+letter has become Ctrl+letter by the time it
-      -- gets here. ⌘⌥Space has to be pressed ⌘ first: with ⌥ down first,
-      -- kanata reads Space as the start of the ⌥Space window chord instead.
+      -- gets here (kanata, outside kitty).
 
-      hl.bind("SUPER + SPACE", hl.dsp.global("quickshell:launcher"))
-      hl.bind("ALT + SUPER + SPACE", hl.dsp.exec_cmd("vicinae toggle"))
+      hl.bind("SUPER + SPACE", hl.dsp.global("quickshell:launcher"), about("Shell", "Launcher"))
+      hl.bind("ALT + SUPER + SPACE", hl.dsp.exec_cmd("vicinae toggle"), about("Shell", "Vicinae"))
+      hl.bind(hyper .. " + slash", shell("keys"), about("Shell", "Keyboard shortcuts"))
 
-      hl.bind(hyper .. " + C", shell("controlcenter"))
-      hl.bind(hyper .. " + D", hl.dsp.global("quickshell:calendar"))
-      hl.bind(hyper .. " + comma", hl.dsp.global("quickshell:settings"))
-      hl.bind(hyper .. " + W", hl.dsp.global("quickshell:wallpaper"))
-      hl.bind(hyper .. " + N", hl.dsp.global("quickshell:nightlight"))
-      hl.bind(hyper .. " + G", hl.dsp.global("quickshell:gamemode"))
-      hl.bind("CTRL + ALT + DELETE", hl.dsp.global("quickshell:logout"))
+      hl.bind(hyper .. " + C", shell("controlcenter"), about("Shell", "Control center"))
+      hl.bind(hyper .. " + D", hl.dsp.global("quickshell:calendar"), about("Shell", "Calendar"))
+      hl.bind(hyper .. " + comma", hl.dsp.global("quickshell:settings"), about("Shell", "Settings"))
+      hl.bind(hyper .. " + W", hl.dsp.global("quickshell:wallpaper"), about("Shell", "Wallpaper"))
+      hl.bind(hyper .. " + N", hl.dsp.global("quickshell:nightlight"), about("Shell", "Night light"))
+      hl.bind(hyper .. " + G", hl.dsp.global("quickshell:gamemode"), about("Shell", "Game mode"))
+      -- Delete is fn⌫ on the Magic Keyboard.
+      hl.bind("CTRL + ALT + DELETE", hl.dsp.global("quickshell:logout"), about("Shell", "Log out, restart, shut down"))
 
       -- Lock with ⌘Esc. The Mac's ⌃⌘Q can't be had here: kanata turns ⌘Q into
       -- Ctrl+Q before Hyprland sees it. This goes through logind rather than
       -- straight to the shell so that every lock, this one and suspend's
       -- alike, takes the one path through hypridle (lock.nix).
-      hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"))
+      hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"), about("Shell", "Lock"))
 
       -- Screenshots ------------------------------------------------------------
 
-      hl.bind("ALT + SHIFT + 3", app("grimblast --notify copysave screen"))
-      hl.bind("ALT + SHIFT + 4", app("grimblast --notify copysave area"))
-      hl.bind("ALT + SHIFT + 5", app("grimblast --notify copysave active"))
+      hl.bind("ALT + SHIFT + 3", app("grimblast --notify copysave screen"), about("Screenshots", "Screen"))
+      hl.bind("ALT + SHIFT + 4", app("grimblast --notify copysave area"), about("Screenshots", "Area"))
+      hl.bind("ALT + SHIFT + 5", app("grimblast --notify copysave active"), about("Screenshots", "Window"))
       -- The same chords from kitty, where kanata leaves ⌘ as Super.
-      hl.bind("SUPER + SHIFT + 3", app("grimblast --notify copysave screen"))
-      hl.bind("SUPER + SHIFT + 4", app("grimblast --notify copysave area"))
-      hl.bind("SUPER + SHIFT + 5", app("grimblast --notify copysave active"))
+      hl.bind("SUPER + SHIFT + 3", app("grimblast --notify copysave screen"), about("Screenshots", "Screen"))
+      hl.bind("SUPER + SHIFT + 4", app("grimblast --notify copysave area"), about("Screenshots", "Area"))
+      hl.bind("SUPER + SHIFT + 5", app("grimblast --notify copysave active"), about("Screenshots", "Window"))
 
-      -- Workspaces, the way Spaces work ---------------------------------------
+      -- Workspaces, the way Spaces work. Going to a number that has no
+      -- workspace creates it, and an emptied one goes away. ------------------
 
       for i = 1, 9 do
-        hl.bind("CTRL + " .. i, hl.dsp.focus({ workspace = i }))
-        hl.bind(hyper .. " + " .. i, hl.dsp.window.move({ workspace = i }))
+        hl.bind("CTRL + " .. i, hl.dsp.focus({ workspace = i }), about("Workspaces", "Go to workspace " .. i))
+        hl.bind(hyper .. " + " .. i, hl.dsp.window.move({ workspace = i }), about("Workspaces", "Move window to workspace " .. i))
       end
 
-      hl.bind("CTRL + LEFT", hl.dsp.focus({ workspace = "e-1" }))
-      hl.bind("CTRL + RIGHT", hl.dsp.focus({ workspace = "e+1" }))
+      hl.bind("CTRL + LEFT", hl.dsp.focus({ workspace = "e-1" }), about("Workspaces", "Previous workspace"))
+      hl.bind("CTRL + RIGHT", hl.dsp.focus({ workspace = "e+1" }), about("Workspaces", "Next workspace"))
 
       -- ⌥Tab and ⌥` drop down a terminal and a notes window over whatever
       -- is showing, each created on first use.
       hl.workspace_rule({ workspace = "special:terminal", on_created_empty = "uwsm app -- kitty" })
       hl.workspace_rule({ workspace = "special:notes", on_created_empty = "uwsm app -- obsidian" })
-      hl.bind("ALT + TAB", hl.dsp.workspace.toggle_special("terminal"))
-      hl.bind("ALT + grave", hl.dsp.workspace.toggle_special("notes"))
+      hl.bind("ALT + TAB", hl.dsp.workspace.toggle_special("terminal"), about("Workspaces", "Drop-down terminal"))
+      hl.bind("ALT + grave", hl.dsp.workspace.toggle_special("notes"), about("Workspaces", "Drop-down notes"))
 
       -- Windows ---------------------------------------------------------------
 
-      hl.bind("SUPER + TAB", hl.dsp.window.cycle_next())
-      hl.bind("SUPER + SHIFT + TAB", hl.dsp.window.cycle_next({ next = false }))
+      hl.bind("SUPER + TAB", hl.dsp.window.cycle_next(), about("Windows", "Next window"))
+      hl.bind("SUPER + SHIFT + TAB", hl.dsp.window.cycle_next({ next = false }), about("Windows", "Previous window"))
 
-      hl.bind("SUPER + LEFT", hl.dsp.focus({ direction = "left" }))
-      hl.bind("SUPER + DOWN", hl.dsp.focus({ direction = "down" }))
-      hl.bind("SUPER + UP", hl.dsp.focus({ direction = "up" }))
-      hl.bind("SUPER + RIGHT", hl.dsp.focus({ direction = "right" }))
+      hl.bind("SUPER + LEFT", hl.dsp.focus({ direction = "left" }), about("Windows", "Focus left"))
+      hl.bind("SUPER + DOWN", hl.dsp.focus({ direction = "down" }), about("Windows", "Focus down"))
+      hl.bind("SUPER + UP", hl.dsp.focus({ direction = "up" }), about("Windows", "Focus up"))
+      hl.bind("SUPER + RIGHT", hl.dsp.focus({ direction = "right" }), about("Windows", "Focus right"))
 
-      -- Hyper+hjkl, typed directly or as ⌥Space then a letter.
-      hl.bind(hyper .. " + H", hl.dsp.window.move({ direction = "left" }))
-      hl.bind(hyper .. " + J", hl.dsp.window.move({ direction = "down" }))
-      hl.bind(hyper .. " + K", hl.dsp.window.move({ direction = "up" }))
-      hl.bind(hyper .. " + L", hl.dsp.window.move({ direction = "right" }))
+      hl.bind(hyper .. " + H", hl.dsp.window.move({ direction = "left" }), about("Windows", "Move left"))
+      hl.bind(hyper .. " + J", hl.dsp.window.move({ direction = "down" }), about("Windows", "Move down"))
+      hl.bind(hyper .. " + K", hl.dsp.window.move({ direction = "up" }), about("Windows", "Move up"))
+      hl.bind(hyper .. " + L", hl.dsp.window.move({ direction = "right" }), about("Windows", "Move right"))
 
-      hl.bind(hyper .. " + Q", hl.dsp.window.close())
-      hl.bind(hyper .. " + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
-      hl.bind(hyper .. " + RETURN", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
-      hl.bind(hyper .. " + SPACE", hl.dsp.window.float({ action = "toggle" }))
+      hl.bind(hyper .. " + Q", hl.dsp.window.close(), about("Windows", "Close"))
+      hl.bind(hyper .. " + F", hl.dsp.window.fullscreen({ mode = "maximized" }), about("Windows", "Maximize"))
+      hl.bind(hyper .. " + RETURN", hl.dsp.window.fullscreen({ mode = "fullscreen" }), about("Windows", "Fullscreen"))
+      hl.bind(hyper .. " + SPACE", hl.dsp.window.float({ action = "toggle" }), about("Windows", "Float or tile"))
 
-      hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { mouse = true })
-      hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
+      hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), about("Windows", "Move with the mouse", { mouse = true }))
+      hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), about("Windows", "Resize with the mouse", { mouse = true }))
+
+      -- Window mode -----------------------------------------------------------
+      --
+      -- ⌥Space, as Moom's keyboard control is on the Mac: a mode that stays
+      -- on while a window is being nudged and resized, and ends after one of
+      -- the layouts, the way Moom dismisses after a half or a fill. The shell
+      -- shows the mode's keys while it's on.
+      --
+      -- Moom moves windows to exact fractions of the screen. Here the layouts
+      -- set the split the window shares with its neighbour instead, so it
+      -- stays tiled: H gives it the left half, K the left two thirds, and so
+      -- on. A split ratio of r gives the left (or top) side r/2 of the space,
+      -- and a nested window's split is its own, not the workspace's.
+      --
+      -- ⌥← and ⌥→ arrive as ⌃← and ⌃→ (kanata's word movement), so ⌥ and ⌃
+      -- both shrink, and ⇧ grows.
+
+      local mode = "window"
+      hl.bind("ALT + SPACE", hl.dsp.submap(mode), about("Windows", "Window mode"))
+
+      local function done(...)
+        local actions = { ... }
+        return function()
+          for _, action in ipairs(actions) do
+            hl.dispatch(action)
+          end
+          hl.dispatch(hl.dsp.submap("reset"))
+        end
+      end
+
+      local function layout(side, ratio)
+        return done(
+          hl.dsp.window.swap({ direction = side }),
+          hl.dsp.layout("splitratio " .. ratio .. " exact")
+        )
+      end
+
+      local step = 60
+      local arrows = {
+        { key = "left", x = -1, y = 0 },
+        { key = "right", x = 1, y = 0 },
+        { key = "up", x = 0, y = -1 },
+        { key = "down", x = 0, y = 1 },
+      }
+
+      hl.define_submap(mode, function()
+        for _, arrow in ipairs(arrows) do
+          local name = arrow.key:sub(1, 1):upper() .. arrow.key:sub(2)
+          local shrink = hl.dsp.window.resize({ x = -math.abs(arrow.x) * step, y = -math.abs(arrow.y) * step, relative = true })
+          local grow = hl.dsp.window.resize({ x = math.abs(arrow.x) * step, y = math.abs(arrow.y) * step, relative = true })
+          hl.bind(arrow.key, hl.dsp.window.swap({ direction = arrow.key }), about("Window mode", "Move " .. arrow.key))
+          hl.bind("ALT + " .. arrow.key, shrink, about("Window mode", "Shrink", { repeating = true }))
+          hl.bind("CTRL + " .. arrow.key, shrink, about("Window mode", "Shrink", { repeating = true }))
+          hl.bind("SHIFT + " .. arrow.key, grow, about("Window mode", "Grow", { repeating = true }))
+        end
+
+        -- Moom's ⌘+arrows move to the other display. There's one here, so they
+        -- carry the window to the next workspace over instead.
+        hl.bind("SUPER + left", hl.dsp.window.move({ workspace = "e-1" }), about("Window mode", "To previous workspace"))
+        hl.bind("SUPER + right", hl.dsp.window.move({ workspace = "e+1" }), about("Window mode", "To next workspace"))
+
+        hl.bind("SPACE", done(hl.dsp.window.fullscreen({ mode = "fullscreen" })), about("Window mode", "Fill screen"))
+        hl.bind("F", done(hl.dsp.window.fullscreen({ mode = "maximized" })), about("Window mode", "Gapped full"))
+        hl.bind("RETURN", done(
+          hl.dsp.window.fullscreen({ action = "unset" }),
+          hl.dsp.layout("splitratio 1 exact")
+        ), about("Window mode", "Revert"))
+        hl.bind("TAB", hl.dsp.layout("togglesplit"), about("Window mode", "Side by side or stacked"))
+        hl.bind("V", hl.dsp.window.float({ action = "toggle" }), about("Window mode", "Float or tile"))
+        hl.bind("C", done(hl.dsp.window.center()), about("Window mode", "Center (floating)"))
+
+        hl.bind("H", layout("left", "1"), about("Window mode", "Left half"))
+        hl.bind("L", layout("right", "1"), about("Window mode", "Right half"))
+        hl.bind("K", layout("left", "1.3333"), about("Window mode", "Left ⅔"))
+        hl.bind("J", layout("right", "1.3333"), about("Window mode", "Right ⅓"))
+        hl.bind("G", layout("left", "1.1667"), about("Window mode", "Left 7⁄12"))
+        hl.bind("semicolon", layout("right", "1.1667"), about("Window mode", "Right 5⁄12"))
+        hl.bind("I", done(hl.dsp.window.swap({ direction = "up" })), about("Window mode", "Top of its column"))
+        hl.bind("M", done(hl.dsp.window.swap({ direction = "down" })), about("Window mode", "Bottom of its column"))
+
+        for i = 1, 9 do
+          hl.bind(tostring(i), done(hl.dsp.window.move({ workspace = i })), about("Window mode", "To workspace " .. i))
+        end
+
+        hl.bind("ESCAPE", hl.dsp.submap("reset"), about("Window mode", "Done"))
+        hl.bind("ALT + SPACE", hl.dsp.submap("reset"), about("Window mode", "Done"))
+        -- Anything else ends the mode rather than being typed into the window
+        -- while the mode still has the keyboard.
+        hl.bind("catchall", hl.dsp.submap("reset"))
+      end)
 
       -- Media keys --------------------------------------------------------------
       --
       -- Volume and brightness go to the shell rather than to wpctl and
       -- brightnessctl directly, so its on-screen level shows as they change.
 
-      hl.bind("XF86AudioRaiseVolume", hl.dsp.global("quickshell:volumeUp"), { locked = true, repeating = true })
-      hl.bind("XF86AudioLowerVolume", hl.dsp.global("quickshell:volumeDown"), { locked = true, repeating = true })
-      hl.bind("XF86AudioMute", hl.dsp.global("quickshell:volumeMute"), { locked = true })
-      hl.bind("XF86MonBrightnessUp", hl.dsp.global("quickshell:brightnessUp"), { locked = true, repeating = true })
-      hl.bind("XF86MonBrightnessDown", hl.dsp.global("quickshell:brightnessDown"), { locked = true, repeating = true })
-      hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-      hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-      hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
-      hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true })
+      hl.bind("XF86AudioRaiseVolume", hl.dsp.global("quickshell:volumeUp"), about("Media", "Volume up", { locked = true, repeating = true }))
+      hl.bind("XF86AudioLowerVolume", hl.dsp.global("quickshell:volumeDown"), about("Media", "Volume down", { locked = true, repeating = true }))
+      hl.bind("XF86AudioMute", hl.dsp.global("quickshell:volumeMute"), about("Media", "Mute", { locked = true }))
+      hl.bind("XF86MonBrightnessUp", hl.dsp.global("quickshell:brightnessUp"), about("Media", "Brighter", { locked = true, repeating = true }))
+      hl.bind("XF86MonBrightnessDown", hl.dsp.global("quickshell:brightnessDown"), about("Media", "Dimmer", { locked = true, repeating = true }))
+      hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), about("Media", "Play or pause", { locked = true }))
+      hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), about("Media", "Play or pause", { locked = true }))
+      hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), about("Media", "Next track", { locked = true }))
+      hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), about("Media", "Previous track", { locked = true }))
     '';
 
   # Stylix (modules/nixos/desktop/stylix.nix) owns the GTK theme, fonts and
