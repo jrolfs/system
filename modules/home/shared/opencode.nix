@@ -100,6 +100,16 @@ let
         // lib.optionalAttrs (available ? anthropic) { model = "anthropic/claude-sonnet-5-5"; }
         // lib.optionalAttrs (!(available ? anthropic) && foundry) { model = "foundry/claude-opus-5-5"; })
     ];
+
+  # Models for the memory plugin's hidden agents, from whichever provider this
+  # host has: a fast one for recall (every turn) and extraction (each idle
+  # session), a stronger one for the occasional consolidation pass. Left to
+  # the session's model these would fail on opencode's free models, which
+  # reject a request without its shell tool.
+  memoryModels =
+    if available ? anthropic then { fast = "anthropic/claude-haiku-4-5"; strong = "anthropic/claude-sonnet-5-5"; }
+    else if foundry then { fast = "foundry/claude-haiku-4-5"; strong = "foundry/claude-opus-5-5"; }
+    else null;
 in
 {
   programs.opencode = {
@@ -124,6 +134,22 @@ in
       small_model = "foundry/claude-haiku-4-5";
     } // {
 
+      # Claude Code's instructions, which opencode 2 no longer reads by itself
+      # (it looks for AGENTS.md only). A relative entry is matched upwards from
+      # the session's directory to the project root, whichever config declares
+      # it, so this one line picks up every CLAUDE.md on the way, nested ones
+      # included, the way Claude Code does. A repo with both files gets both.
+      instructions = [
+        "CLAUDE.md"
+        "${config.home.homeDirectory}/.claude/CLAUDE.md"
+      ];
+
+      # Skills under ~/.claude/skills and a project's .claude/skills are read
+      # natively. Skills that arrive inside Claude Code plugins are not, so
+      # worktrunk's comes from its package instead. Not wt-switch-create, which
+      # drives Claude Code's EnterWorktree tool.
+      skills = [ "${pkgs.worktrunk}/share/skills/worktrunk/worktrunk" ];
+
       # Something like Claude Code's auto mode. opencode 2 allows every action
       # unless a rule says otherwise, so everything starts at `ask`, and the
       # plugin reviews each ask before it reaches a prompt: fixed checks first
@@ -136,8 +162,12 @@ in
       # release (pkgs.opencode-auto-mode in overlays/default.nix, which says
       # what the patch changes), loaded from its store path. It is young and is
       # trusted with approvals: read the changes before bumping it.
+      #
+      # The last matching rule wins, so the memory plugin's tools, which only
+      # touch its memory folder, run without a review.
       permissions = [
         { action = "*"; resource = "*"; effect = "ask"; }
+        { action = "memory_*"; resource = "*"; effect = "allow"; }
       ];
 
       plugins = [
@@ -148,7 +178,22 @@ in
             auditLog = true;
           };
         }
+
+        # Claude Code's memory, shared: opencode reads and writes the same
+        # ~/.claude/projects/<project>/memory/ folder, in the same format, so
+        # either tool picks up what the other saved. It recalls relevant
+        # memories before each turn and saves new ones once a session goes
+        # idle, through the hidden agents configured below. claude-sync
+        # carries the folder between machines as it already does. Pinned to
+        # an exact release, loaded from npm.
+        { package = "opencode-claude-memory@2.2.1"; }
       ];
+    } // lib.optionalAttrs (memoryModels != null) {
+      agents = {
+        opencode-memory-recall.model = memoryModels.fast;
+        opencode-memory-extract.model = memoryModels.fast;
+        opencode-memory-dream.model = memoryModels.strong;
+      };
     };
   };
 }
