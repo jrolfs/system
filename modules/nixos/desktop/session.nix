@@ -17,8 +17,11 @@ lib.mkIf config.desktop.enable {
   # app silently does nothing.
   xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
 
-  # PAM for the lock screen. The home-manager side configures it.
-  programs.hyprlock.enable = true;
+  # The shell's lock screen authenticates through this PAM service, named in
+  # its PamContext. Its own service rather than borrowing `login` or `su`, so
+  # what checks the password is declared here instead of inherited from
+  # whatever those happen to stack up.
+  security.pam.services.quickshell = { };
 
   security.rtkit.enable = true;
   services.pipewire = {

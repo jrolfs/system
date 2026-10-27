@@ -1,0 +1,17 @@
+singleton Apps Apps.qml
+singleton Audio Audio.qml
+singleton Battery Battery.qml
+singleton Clipboard Clipboard.qml
+singleton LockState LockState.qml
+singleton Media Media.qml
+singleton Notifications Notifications.qml
+singleton OsdState OsdState.qml
+singleton Polkit Polkit.qml
+singleton Wallpapers Wallpapers.qml
+singleton Brightness Brightness.qml
+singleton Bluetooth Bluetooth.qml
+singleton Network Network.qml
+singleton NightLight NightLight.qml
+singleton GameMode GameMode.qml
+singleton Display Display.qml
+singleton Cava Cava.qml

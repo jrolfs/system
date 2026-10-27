@@ -29,6 +29,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Base16 theming for the NixOS desktop: GTK, Qt, cursor, icons and fonts
+    # from one scheme, so an app with no theme of its own still comes up in
+    # Gruvbox Material. Its master branch tracks nixpkgs-unstable, as this flake
+    # does. Configured in modules/nixos/desktop/stylix.nix.
+    stylix = {
+      url = "github:nix-community/stylix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # MicroVMs declared as NixOS configuration and run by systemd, for the
     # agent sandbox on Irulan (modules/nixos/services/agent-vm.nix).
     microvm = {
@@ -146,6 +155,7 @@
           ./modules/nixos
           ./hosts/${hostname}
           inputs.disko.nixosModules.disko
+          inputs.stylix.nixosModules.stylix
           home-manager.nixosModules.home-manager
           {
             home-manager.useGlobalPkgs = true;

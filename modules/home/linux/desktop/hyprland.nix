@@ -1,4 +1,4 @@
-{ lib, pkgs, osConfig, ... }:
+{ config, lib, osConfig, ... }:
 
 # Hyprland's own configuration, as Lua.
 #
@@ -12,7 +12,7 @@
 # Background programs are systemd user units started by graphical-session.target,
 # which uwsm brings up around Hyprland, so nothing is launched from here.
 #
-# Keys, as they arrive here after kanata (modules/nixos/desktop/layout.kbd):
+# Keys, as they arrive here after kanata (modules/nixos/keyboard/layout.kbd):
 #   ⌘ is SUPER, but ⌘+letter outside kitty has already become Ctrl+letter
 #   Right ⌥ held is Hyper, CTRL + ALT + SUPER + SHIFT
 #   ⌥Space then h/j/k/l is Hyper+h/j/k/l
@@ -21,28 +21,21 @@
 let
   palette = (import ../../../theme/palette.nix).dark.soft;
   fonts = import ../../../theme/fonts.nix;
+  look = import ./look.nix;
 
   # Hyprland wants colours as rgb(rrggbb) or rgba(rrggbbaa).
   rgb = hex: "rgb(${lib.removePrefix "#" hex})";
   rgba = hex: alpha: "rgba(${lib.removePrefix "#" hex}${alpha})";
 
-  # The visual values this file repeats, in one place until a shared token
-  # layer exists for them to come from.
-  look = {
-    gapsIn = 6;
-    gapsOut = 12;
-    border = 2;
-    rounding = 10;
-    blurSize = 8;
-    blurPasses = 3;
-  };
-
-  # Layer-shell namespaces that get blurred behind. The bar and launcher draw
-  # translucent backgrounds of their own, which this makes frosted rather than
-  # see-through; `ignore_alpha` keeps the blur off their fully transparent
+  # Layer-shell namespaces that get blurred behind. Vicinae draws a
+  # translucent background of its own, which this makes frosted rather than
+  # see-through; `ignore_alpha` keeps the blur off its fully transparent
   # margins.
+  #
+  # The shell is deliberately absent. It asks for blur itself, per region,
+  # through the ext-background-effect protocol, and several of its surfaces are
+  # full-screen and transparent: a layer rule on those blurs the whole screen.
   blurredLayers = [
-    "quickshell:bar"
     "vicinae"
   ];
 in
@@ -59,6 +52,16 @@ lib.mkIf (osConfig.desktop.enable or false) {
         return hl.dsp.exec_cmd("uwsm app -- " .. command)
       end
 
+      -- The shell's panels that have no global shortcut of their own.
+      local function shell(target)
+        return hl.dsp.exec_cmd("${lib.getExe config.programs.quickshell.package} -c shell ipc call " .. target .. " toggle")
+      end
+
+      -- The TV is read from the couch, so it runs at 2x: 1920x1080 of layout
+      -- drawn with 4K sharpness. At 1x everything was a quarter of the size it
+      -- needed to be from across the room. Anything else plugged in gets
+      -- Hyprland's own guess.
+      hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto", scale = 2 })
       hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 
       hl.config({
@@ -117,6 +120,11 @@ lib.mkIf (osConfig.desktop.enable or false) {
           force_default_wallpaper = 0,
           disable_hyprland_logo = true,
           disable_splash_rendering = true,
+          -- A shell that crashes while locked leaves the session locked behind
+          -- Hyprland's red "lockscreen died" screen. This lets the restarted
+          -- shell take the lock back over, where otherwise the only way out
+          -- is a TTY.
+          allow_session_lock_restore = true,
         },
 
         group = {
@@ -132,9 +140,41 @@ lib.mkIf (osConfig.desktop.enable or false) {
       ${lib.concatMapStringsSep "\n" (namespace: ''
         hl.layer_rule({ match = { namespace = "^${namespace}$" }, blur = true, ignore_alpha = 0.2 })'') blurredLayers}
 
-      -- Launcher and screenshots ------------------------------------------
+      -- The shell ------------------------------------------------------------
+      --
+      --   ⌘Space            launcher (`:` for the clipboard history)
+      --   ⌘⌥Space           Vicinae, for its extensions
+      --   Hyper+C           control center
+      --   Hyper+D           calendar
+      --   Hyper+,           settings
+      --   Hyper+W           wallpaper picker
+      --   Hyper+N           night light
+      --   Hyper+G           game mode
+      --   ⌃⌥Delete          log out, restart, shut down (Delete is fn⌫)
+      --   ⌘Esc              lock
+      --
+      -- Hyper+letter because ⌘+letter has become Ctrl+letter by the time it
+      -- gets here. ⌘⌥Space has to be pressed ⌘ first: with ⌥ down first,
+      -- kanata reads Space as the start of the ⌥Space window chord instead.
 
-      hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("vicinae toggle"))
+      hl.bind("SUPER + SPACE", hl.dsp.global("quickshell:launcher"))
+      hl.bind("ALT + SUPER + SPACE", hl.dsp.exec_cmd("vicinae toggle"))
+
+      hl.bind(hyper .. " + C", shell("controlcenter"))
+      hl.bind(hyper .. " + D", hl.dsp.global("quickshell:calendar"))
+      hl.bind(hyper .. " + comma", hl.dsp.global("quickshell:settings"))
+      hl.bind(hyper .. " + W", hl.dsp.global("quickshell:wallpaper"))
+      hl.bind(hyper .. " + N", hl.dsp.global("quickshell:nightlight"))
+      hl.bind(hyper .. " + G", hl.dsp.global("quickshell:gamemode"))
+      hl.bind("CTRL + ALT + DELETE", hl.dsp.global("quickshell:logout"))
+
+      -- Lock with ⌘Esc. The Mac's ⌃⌘Q can't be had here: kanata turns ⌘Q into
+      -- Ctrl+Q before Hyprland sees it. This goes through logind rather than
+      -- straight to the shell so that every lock, this one and suspend's
+      -- alike, takes the one path through hypridle (lock.nix).
+      hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"))
+
+      -- Screenshots ------------------------------------------------------------
 
       hl.bind("ALT + SHIFT + 3", app("grimblast --notify copysave screen"))
       hl.bind("ALT + SHIFT + 4", app("grimblast --notify copysave area"))
@@ -143,10 +183,6 @@ lib.mkIf (osConfig.desktop.enable or false) {
       hl.bind("SUPER + SHIFT + 3", app("grimblast --notify copysave screen"))
       hl.bind("SUPER + SHIFT + 4", app("grimblast --notify copysave area"))
       hl.bind("SUPER + SHIFT + 5", app("grimblast --notify copysave active"))
-
-      -- Lock with ⌘Esc. The Mac's ⌃⌘Q can't be had here: kanata turns ⌘Q into
-      -- Ctrl+Q before Hyprland sees it.
-      hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"))
 
       -- Workspaces, the way Spaces work ---------------------------------------
 
@@ -190,52 +226,29 @@ lib.mkIf (osConfig.desktop.enable or false) {
       hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
 
       -- Media keys --------------------------------------------------------------
+      --
+      -- Volume and brightness go to the shell rather than to wpctl and
+      -- brightnessctl directly, so its on-screen level shows as they change.
 
-      hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-      hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
-      hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
-      hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl set 5%+"), { locked = true, repeating = true })
-      hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl set 5%-"), { locked = true, repeating = true })
+      hl.bind("XF86AudioRaiseVolume", hl.dsp.global("quickshell:volumeUp"), { locked = true, repeating = true })
+      hl.bind("XF86AudioLowerVolume", hl.dsp.global("quickshell:volumeDown"), { locked = true, repeating = true })
+      hl.bind("XF86AudioMute", hl.dsp.global("quickshell:volumeMute"), { locked = true })
+      hl.bind("XF86MonBrightnessUp", hl.dsp.global("quickshell:brightnessUp"), { locked = true, repeating = true })
+      hl.bind("XF86MonBrightnessDown", hl.dsp.global("quickshell:brightnessDown"), { locked = true, repeating = true })
       hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
       hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
       hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
       hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true })
     '';
 
-  # GTK apps and the portal's file chooser, dark and in the interface face.
-  gtk = {
-    enable = true;
-    theme = {
-      name = "Adwaita-dark";
-      package = pkgs.gnome-themes-extra;
-    };
-    font = {
-      name = fonts.sans.family;
-      size = 11;
-    };
-    # GTK 4 apps are mostly libadwaita, which ignores themes and follows the
-    # color-scheme below instead.
-    gtk4.theme = null;
-  };
-
-  # libadwaita apps ignore the GTK theme and read this instead.
+  # Stylix (modules/nixos/desktop/stylix.nix) owns the GTK theme, fonts and
+  # cursor. Its GNOME target, the one that would also set these, is off, since
+  # it drags in a GNOME Shell theme for a desktop that isn't running.
+  # libadwaita apps ignore the GTK theme and follow color-scheme instead.
   dconf.settings."org/gnome/desktop/interface" = {
     color-scheme = "prefer-dark";
-    font-name = "${fonts.sans.family} 11";
     monospace-font-name = "${fonts.mono.family} 11";
   };
-
-  home.pointerCursor = {
-    enable = true;
-    name = "Adwaita";
-    package = pkgs.adwaita-icon-theme;
-    size = 24;
-    gtk.enable = true;
-  };
-
-  # The polkit agent shows the password prompt when an app asks for
-  # privileges (1Password's system authentication, mounting a disk).
-  services.hyprpolkitagent.enable = true;
 
   # Copied text outlives the window it was copied from, as on the Mac.
   # Wayland otherwise drops the clipboard when its owner closes.

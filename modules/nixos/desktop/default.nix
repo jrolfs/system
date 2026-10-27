@@ -22,6 +22,7 @@
     ./greeter.nix
     ./input.nix
     ./session.nix
+    ./stylix.nix
     ./user-picture.nix
   ];
 }
