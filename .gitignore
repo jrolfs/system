@@ -3,3 +3,7 @@ result
 
 # bun install in dotfiles/home/.claude/bin, for editors; the build vendors its own
 node_modules/
+
+# Purchased reference material. The desktop shell adapted from it is
+# tracked in modules/home/linux/desktop/shell; the originals are not.
+/documentation/third-party/hypr-accelerator/
