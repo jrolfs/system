@@ -1,4 +1,30 @@
 {
+  "ssh_connections": [
+    {
+      "host": "ala.rolfs.lan",
+      "username": "jamie",
+      "args": [],
+      "projects": [
+        {
+          "paths": [
+            "/Users/jamie/Developer"
+          ]
+        },
+        {
+          "paths": [
+            "/Users/jamie/Developer/Sources/jrolfs/website/./"
+          ]
+        }
+      ],
+      "nickname": "Ala"
+    },
+    {
+      "host": "ala.rolfs.lan",
+      "username": "jamie",
+      "args": [],
+      "projects": []
+    }
+  ],
   "document_symbols": "on",
   "close_on_file_delete": false,
   "seed_search_query_from_cursor": "selection",
@@ -178,6 +204,11 @@
       "type": "registry"
     },
     "Claude Foundry": {
+      "favorite_config_option_values": {
+        "mode": [
+          "auto"
+        ]
+      },
       "type": "custom",
       "command": "/etc/profiles/per-user/jamie/bin/claude-foundry-acp",
       "default_config_options": {
