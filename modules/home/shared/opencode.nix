@@ -187,6 +187,14 @@ in
         # carries the folder between machines as it already does. Pinned to
         # an exact release, loaded from npm.
         { package = "opencode-claude-memory@2.2.1"; }
+
+        # Each shell command runs in its directory's direnv environment,
+        # loaded fresh per command (`direnv export json` in its working
+        # directory) and applied to that command only, never to the shared
+        # server. An .envrc that hasn't been allowed fails the command rather
+        # than running it without its environment. The V1 plugins
+        # (simonwjackson/opencode-direnv and friends) don't load in opencode 2.
+        { package = "@madsoftwaredev/opencode-direnv@0.1.2"; }
       ];
     } // lib.optionalAttrs (memoryModels != null) {
       agents = {
