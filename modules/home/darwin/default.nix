@@ -70,7 +70,6 @@ in
     ./icloud.nix
     ./raycast.nix
     ./wallpaper.nix
-    ./zed.nix
   ];
 
   # Provide ~/.zshrc.darwin — sourced by ~/.zshrc when uname is Darwin.

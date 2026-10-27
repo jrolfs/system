@@ -1,8 +1,9 @@
-{ pkgs, lib, config, ... }:
+{ pkgs, lib, config, osConfig, ... }:
 
-# Zed itself is the Homebrew cask, and its config directory is linked wholesale
-# in default.nix (Zed writes settings.json back from the UI, so the whole dir
-# is an out-of-store symlink into the repo). Registry extensions ride the
+# Zed itself is the Homebrew cask on macOS and pkgs.zed-editor on Linux
+# (modules/nixos/desktop/apps.nix), and its config directory is linked
+# wholesale in default.nix (Zed writes settings.json back from the UI, so the
+# whole dir is an out-of-store symlink into the repo). Registry extensions ride the
 # `auto_install_extensions` key in settings.json — Zed installs anything listed
 # there that's missing, and never uninstalls, so the list converges a fresh
 # machine and re-adds anything deleted by hand.
@@ -13,9 +14,16 @@
 # under extensions/installed/ being a symlink (extension_host.rs:
 # `is_dev = metadata.is_symlink`; index.json is just a cache it rebuilds), and
 # "install dev extension" does nothing but compile the grammars and plant that
-# symlink — so declaring the symlink *is* the install.
+# symlink — so declaring the symlink *is* the install. Only where Zed keeps its
+# data differs between the platforms. A NixOS host without a desktop has no
+# Zed, so it gets neither the link nor the clone.
 
 let
+  installed =
+    if pkgs.stdenv.hostPlatform.isDarwin
+    then "Library/Application Support/Zed/extensions/installed"
+    else ".local/share/zed/extensions/installed";
+
   clone = "${config.home.homeDirectory}/Developer/Sources/jrolfs/zed-gruvbox-material-custom";
   cloneUrl = "https://github.com/jrolfs/zed-gruvbox-material-custom.git";
 
@@ -38,8 +46,8 @@ let
     timeout 300 git clone --quiet ${cloneUrl} ${lib.escapeShellArg clone}
   '';
 in
-{
-  home.file."Library/Application Support/Zed/extensions/installed/gruvbox-material-custom".source =
+lib.mkIf (pkgs.stdenv.hostPlatform.isDarwin || (osConfig.desktop.enable or false)) {
+  home.file."${installed}/gruvbox-material-custom".source =
     config.lib.file.mkOutOfStoreSymlink clone;
 
   home.activation.zedExtensionClone = lib.hm.dag.entryAfter [ "writeBoundary" ] # bash

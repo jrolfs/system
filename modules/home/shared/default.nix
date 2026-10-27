@@ -48,7 +48,7 @@ let
     (builtins.readDir "${dotfiles}/.local/share/gh/extensions");
 in
 {
-  imports = [ ./atuin.nix ./claude-accounts.nix ./claude-sync.nix ./eza.nix ./gh.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./onepassword.nix ./opencode.nix ./secrets.nix ./ssh.nix ./starship.nix ]
+  imports = [ ./atuin.nix ./claude-accounts.nix ./claude-sync.nix ./eza.nix ./gh.nix ./mcp.nix ./neovim.nix ./nix-commands.nix ./onepassword.nix ./opencode.nix ./secrets.nix ./ssh.nix ./starship.nix ./zed.nix ]
     ++ lib.optional (builtins.pathExists ./hosts/${hostname}.nix) ./hosts/${hostname}.nix;
 
   home.username = userName;
