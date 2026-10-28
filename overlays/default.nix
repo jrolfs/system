@@ -26,6 +26,15 @@ in
 {
   spicetify-cli = masterPkgs.spicetify-cli;
 
+  # The 8.12 desktop app ships chrome_crashpad_handler, which the 2026-10-24
+  # nixpkgs package leaves with a generic Linux interpreter, so NixOS refuses
+  # to run it, Chromium trips a check, and every launch dies with SIGTRAP
+  # before a window appears. nixpkgs master patches the whole bundle with
+  # autoPatchelfHook instead. Drop this once nixpkgs' _1password-gui/linux.nix
+  # uses autoPatchelfHook too. Linux only: the Macs run the Homebrew app.
+  _1password-gui =
+    if super.stdenv.hostPlatform.isLinux then masterPkgs._1password-gui else super._1password-gui;
+
   # azure-cli depends on fabric, which nixpkgs marks broken against invoke 3
   # (nixpkgs moved to invoke 3.0.3 by 2026-10-24). allowBroken turns that into
   # a failed build rather than an evaluation error. The previous lock's
