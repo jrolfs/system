@@ -27,7 +27,7 @@ let
     name = "av";
     runtimeInputs = [ pkgs.curl pkgs.jq ];
     text = ''
-      url=${lib.escapeShellArg cfg.homeAssistant}
+      urls=(${lib.escapeShellArgs cfg.homeAssistant})
       entity=${lib.escapeShellArg cfg.entity}
 
       if [ ! -r ${lib.escapeShellArg token} ]; then
@@ -36,17 +36,28 @@ let
       fi
       auth="Authorization: Bearer $(tr -d '\n' < ${lib.escapeShellArg token})"
 
+      # Each address in turn until one answers.
+      request() {
+        for url in "''${urls[@]}"; do
+          if curl -fsS -m 8 "$@" -H "$auth" "$url$path" 2>/dev/null; then
+            return 0
+          fi
+        done
+        echo "av: no Home Assistant answered at ''${urls[*]}" >&2
+        return 1
+      }
+
       service() {
-        curl -fsS -m 15 -o /dev/null -H "$auth" -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$entity\"}" "$url/api/services/media_player/$1"
+        path="/api/services/media_player/$1"
+        request -o /dev/null -H "Content-Type: application/json" -d "{\"entity_id\": \"$entity\"}"
       }
 
       case "''${1:-}" in
         on) service turn_on ;;
         off) service turn_off ;;
         status)
-          curl -fsS -m 15 -H "$auth" "$url/api/states/$entity" \
-            | jq -r '"\(.attributes.friendly_name): \(.state)" + (if .attributes.art_mode_status then ", art mode \(.attributes.art_mode_status)" else "" end)'
+          path="/api/states/$entity"
+          request | jq -r '"\(.attributes.friendly_name): \(.state)" + (if .attributes.art_mode_status then ", art mode \(.attributes.art_mode_status)" else "" end)'
           ;;
         *)
           echo "usage: av on|off|status" >&2
@@ -67,11 +78,11 @@ in
     enable = mkEnableOption "switching the TV and receiver with the machine";
 
     homeAssistant = mkOption {
-      type = types.str;
-      # The macvlan address Home Assistant keeps when it moves onto Irulan
-      # (documentation/IRULAN-MIGRATION.md, phase 4), so this survives the move.
-      default = "http://10.10.10.2:8123";
-      description = "Home Assistant's base URL.";
+      type = types.listOf types.str;
+      # Traefik's name first. The local one is there for when Traefik isn't,
+      # which is the moment a power-off or a resume is most likely to meet.
+      default = [ "https://home.rolfs.casa" "http://home.rolfs.lan:8123" ];
+      description = "Home Assistant's base URLs, tried in order.";
     };
 
     entity = mkOption {
