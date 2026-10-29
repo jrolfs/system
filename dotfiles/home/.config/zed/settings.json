@@ -156,7 +156,8 @@
   "project_panel": {
     "entry_spacing": "standard",
     "dock": "left",
-    "show_diagnostics": "all"
+    "show_diagnostics": "all",
+    "sort_order": "extension"
   },
   "outline_panel": {
     "indent_size": 2.0,
