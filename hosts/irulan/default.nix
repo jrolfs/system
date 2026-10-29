@@ -55,6 +55,13 @@
   hardware.bluetooth.enable = true;
   arcade.enable = true;
 
+  # The TV (and the receiver behind it) on and off with the machine, through
+  # Home Assistant's control of the Frame, since this HDMI port has no CEC.
+  av = {
+    enable = true;
+    entity = "media_player.living_room_living_room_smart";
+  };
+
   # Boots to the text console until the desktop's first-boot crash is fixed.
   # The `desktop` and `station` commands still start either one by hand.
   sessions.boot = "console";
