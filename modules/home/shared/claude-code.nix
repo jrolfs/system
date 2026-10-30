@@ -56,6 +56,67 @@ in
     # main branch. `worktrunk@worktrunk` in enabledPlugins below turns it on.
     marketplaces.worktrunk = pkgs.worktrunk.src;
 
+    # These replace the *-lsp plugins from claude-plugins-official, which
+    # declare the same servers by bare command name and leave installing them
+    # to whatever is on PATH. Two were broken that way: nothing installed
+    # typescript-language-server, and rustup has no rust-analyzer for the
+    # stable toolchain, so its proxy fell through to a mise shim that resolved
+    # back to rustup. typescript-language-server still uses each project's own
+    # node_modules/typescript; nixpkgs' typescript is the native port, which
+    # has no tsserver to fall back on.
+    #
+    # clangd and sourcekit-lsp stay bare and macOS-only. Apple's builds know
+    # the Xcode SDK, and a C or Swift project with a devshell gets that
+    # toolchain's server instead.
+    lspServers = {
+      typescript = {
+        command = "${pkgs.typescript-language-server}/bin/typescript-language-server";
+        args = [ "--stdio" ];
+        extensionToLanguage = {
+          ".ts" = "typescript";
+          ".tsx" = "typescriptreact";
+          ".js" = "javascript";
+          ".jsx" = "javascriptreact";
+          ".mts" = "typescript";
+          ".cts" = "typescript";
+          ".mjs" = "javascript";
+          ".cjs" = "javascript";
+        };
+      };
+
+      lua = {
+        command = "${pkgs.lua-language-server}/bin/lua-language-server";
+        extensionToLanguage.".lua" = "lua";
+      };
+
+      rust-analyzer = {
+        command = "${pkgs.rust-analyzer}/bin/rust-analyzer";
+        extensionToLanguage.".rs" = "rust";
+      };
+    }
+    // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+      clangd = {
+        command = "clangd";
+        args = [ "--background-index" ];
+        extensionToLanguage = {
+          ".c" = "c";
+          ".h" = "c";
+          ".cpp" = "cpp";
+          ".cc" = "cpp";
+          ".cxx" = "cpp";
+          ".hpp" = "cpp";
+          ".hxx" = "cpp";
+          ".C" = "cpp";
+          ".H" = "cpp";
+        };
+      };
+
+      sourcekit-lsp = {
+        command = "sourcekit-lsp";
+        extensionToLanguage.".swift" = "swift";
+      };
+    };
+
     settings = {
       cleanupPeriodDays = 90;
       includeCoAuthoredBy = true;
@@ -117,13 +178,16 @@ in
         ];
       };
 
+      # Off rather than absent: the settings merge never deletes a key, so
+      # dropping these would leave them enabled beside lspServers above, with
+      # two servers claiming each extension.
       enabledPlugins = {
-        "clangd-lsp@claude-plugins-official" = true;
-        "swift-lsp@claude-plugins-official" = true;
         "worktrunk@worktrunk" = true;
-        "typescript-lsp@claude-plugins-official" = true;
-        "lua-lsp@claude-plugins-official" = true;
-        "rust-analyzer-lsp@claude-plugins-official" = true;
+        "clangd-lsp@claude-plugins-official" = false;
+        "swift-lsp@claude-plugins-official" = false;
+        "typescript-lsp@claude-plugins-official" = false;
+        "lua-lsp@claude-plugins-official" = false;
+        "rust-analyzer-lsp@claude-plugins-official" = false;
       };
     };
   };
