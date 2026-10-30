@@ -7,3 +7,6 @@ node_modules/
 # Purchased reference material. The desktop shell adapted from it is
 # tracked in modules/home/linux/desktop/shell; the originals are not.
 /documentation/third-party/hypr-accelerator/
+
+# devenv state, beside each devenv.nix
+.devenv/

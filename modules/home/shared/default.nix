@@ -272,9 +272,14 @@ in
     # ships alongside the neovim plugin, which vim.pack clones into
     # $XDG_DATA_HOME at runtime (packages/kitty.lua) rather than arriving as an
     # input, so bindings.conf names it by ~-relative path instead.
+    #
+    # The devenv files are for editing the kittens in this tree. Copied along,
+    # they would leave an .envrc in ~/.config/kitty that direnv reports as
+    # blocked on every cd, for an environment that can't build from the store.
     "kitty".source = pkgs.runCommandLocal "kitty-config" { } ''
       cp -R ${dotfiles}/.config/kitty $out
       chmod -R u+w $out
+      rm -f $out/.envrc $out/devenv.nix $out/devenv.lock $out/pyrightconfig.json
       ln -s ${inputs.kitty-gruvbox-material} $out/themes/gruvbox-material
       rm -f $out/kittens/grab $out/kittens/smart-scroll
       ln -s ${inputs.kitty-grab} $out/kittens/grab
