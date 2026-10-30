@@ -291,6 +291,11 @@ in
     # than in ~/Library/Preferences, but that is no obstacle to writing it.
     # cfprefsd resolves the domain either way, which is what velja.nix relies
     # on.
+    #
+    # Dragging an item out is a different switch from macOS 26's "Allow in the
+    # Menu Bar" in System Settings, which hides every item an app has and is
+    # tracked by Control Center after all. Apps hidden that way are listed in
+    # local.menuBar.hiddenApps, below this attrset.
     CustomUserPreferences."com.apple.TextInputMenuAgent"."NSStatusItem VisibleCC Item-0" =
       false;
     CustomUserPreferences."com.cordlessdog.Stay"."NSStatusItem VisibleCC Item-0" =
@@ -352,6 +357,11 @@ in
       "com.apple.keyboard.fnState" = true;
     };
   };
+
+  # Slack's item turns into a Slackbot launcher when Slack enables it for the
+  # workspace. Slack's own off switch can't be pinned from here: it reads its
+  # settings from the defaults domain only when MDM forces them.
+  local.menuBar.hiddenApps = [ "com.tinyspeck.slackmacgap" ];
 
   # Remote Login. Enabled declaratively rather than left to whoever last
   # visited System Settings — provisioning a new machine needs it before there
