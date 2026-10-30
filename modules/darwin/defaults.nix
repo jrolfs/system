@@ -296,14 +296,19 @@ in
     # Menu Bar" in System Settings, which hides every item an app has and is
     # tracked by Control Center after all. Apps hidden that way are listed in
     # local.menuBar.hiddenApps, below this attrset.
-    CustomUserPreferences."com.apple.TextInputMenuAgent"."NSStatusItem VisibleCC Item-0" =
-      false;
     CustomUserPreferences."com.cordlessdog.Stay"."NSStatusItem VisibleCC Item-0" =
       false;
     CustomUserPreferences."com.grammarly.ProjectLlama"."NSStatusItem VisibleCC Item-0" =
       false;
     CustomUserPreferences."org.pqrs.Karabiner-Console-User-Server"."NSStatusItem VisibleCC Item-0" =
       false;
+
+    # The Input menu (the language switcher) answers to Keyboard → Input
+    # Sources → "Show Input menu in menu bar" alone. A VisibleCC key on
+    # TextInputMenuAgent's item reads as hidden while the item stays put. The
+    # agent reads this at launch, so on a running machine it applies after
+    # `killall TextInputMenuAgent`.
+    CustomUserPreferences."com.apple.TextInputMenu".visible = false;
 
     # CleanShot ignores every cleanshot:// command unless this is on, and the
     # Raycast extension drives it through nothing else. The app asks once and
