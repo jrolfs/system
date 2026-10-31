@@ -122,7 +122,7 @@ let
       # match the main kitty; these are only what differs.
       opacity=0.7
       blur=64
-      width_fraction=0.4
+      width_fraction=0.6
       slide_in_ms=220
       slide_out_ms=180
       countdown=10
