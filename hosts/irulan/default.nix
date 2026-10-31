@@ -35,6 +35,10 @@
   # placed by hand first, for the reason step-ca is commented out above.
   komodo.periphery.enable = true;
 
+  # Phase 4's dry run (documentation/IRULAN-MIGRATION.md): both services on
+  # Irulan's own address, without 10.10.10.2. This branch only.
+  homeAssistant.enable = true;
+
   # A microVM running opencode's server, for agents to work in without the
   # rest of this machine in reach.
   agentVm = {
