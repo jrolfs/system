@@ -6,9 +6,9 @@ startgroup
     animation_step 0
 
     # Device pixels. 32 is the measured radius of the main kitty window's
-    # corner; 10 is a 5pt border on a 2x display.
+    # corner, 16 the measured width of the split line between its windows.
     var float RADIUS_PX = 32.0
-    var float BORDER_PX = 10.0
+    var float BORDER_PX = 16.0
 
     shaders rounded-border
 endgroup

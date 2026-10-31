@@ -120,11 +120,6 @@ let
 
       # The panel's own look. Starts from kitty.conf, so the font and theme
       # match the main kitty; these are only what differs.
-      #
-      # The tab bar is inset from the top and sides because kitty draws it
-      # flush to the window edge, where the border the shader paints sat over
-      # its top rows. The inset is filled with the border's colour, so the
-      # border and the bar read as one header band rather than overlapping.
       opacity=0.7
       blur=64
       width_fraction=0.4
@@ -147,18 +142,40 @@ let
         lsappinfo info -only bundleid "$(lsappinfo front)" 2>/dev/null | sed -n 's/.*="\(.*\)"/\1/p'
       }
 
-      # One big tab: the title is padded to the panel's width so the tab fills
-      # the bar, the same as the progress bar kitty-panel draws there.
+      # The tab title is three parts, a label, a middle and a right-hand part,
+      # split on U+2063 so the template can colour each: a title is plain text,
+      # and colour only comes from the template. kitty-panel's progress bar
+      # writes the same shape. The middle is the dim one, bright black, which
+      # is what keeps the bar a texture rather than a loading bar.
+      #
+      # The logo is nf-linux-nixos, built from its codepoint rather than written
+      # into this file: a private-use character is exactly what tools pass
+      # through by silently dropping it, which is how the first try at this
+      # went.
+      separator=$'\u2063'
+      logo=$'\uf313'
+      # Two separators appended, so there are always three parts to index even
+      # in a title nothing here set.
+      part() { print -r -- "(title+'$separator$separator').split('$separator')[$1]" }
+      template="  {fmt.fg.color4}$logo  {fmt.fg.tab}{$(part 0)}{fmt.fg.color8}{$(part 1)}{fmt.fg.tab}{$(part 2)}"
+
+      # Cells the template puts in front of the title: margin, logo, gap.
+      prefix=5
+
+      # One big tab, padded to the room the template leaves so it fills the
+      # bar, the same as kitty-panel's progress bar does.
       title() {
-        rc set-tab-title "''${(r:$(columns):: :)1}"
+        local text="switch  $separator$1$separator''${2:+  $2}"
+        rc set-tab-title "''${(r:$(( $(columns) - prefix )):: :)text}"
       }
 
-      # The tab bar holds a few cells fewer than the window has columns, and a
-      # title any longer is cut short with an ellipsis, which took the clock off
-      # the end of the progress bar.
+      # The tab bar holds fewer cells than the window has columns: it loses its
+      # side margins, and the logo is drawn two cells wide across the space
+      # after it. A title any longer is cut short with an ellipsis, which takes
+      # the clock off the end of the progress bar, so this leaves room to spare.
       columns() {
         local count=$($kitten @ --to $address ls 2>/dev/null | $jq '.[0].tabs[0].windows[0].columns')
-        print -r -- $(( ''${count:-80} - 4 ))
+        print -r -- $(( ''${count:-80} - 9 ))
       }
 
       clock() { printf '%d:%02d' $(( $1 / 60 )) $(( $1 % 60 )) }
@@ -244,10 +261,10 @@ let
           -o allow_remote_control=socket-only -o startup_session=none \
           -o custom_shaders=switch-panel \
           -o tab_bar_edge=top -o tab_bar_min_tabs=1 -o tab_bar_style=separator \
-          -o 'tab_separator=""' -o 'tab_title_template={title}' -o 'active_tab_title_template={title}' \
-          -o active_tab_background='#282828' -o active_tab_foreground='#a89984' \
-          -o tab_bar_background='#282828' -o active_tab_font_style=normal \
-          -o 'tab_bar_margin_height=7 2' -o tab_bar_margin_width=10 -o tab_bar_margin_color='#282828' \
+          -o 'tab_separator=""' -o "tab_title_template=$template" -o "active_tab_title_template=$template" \
+          -o tab_bar_background=none -o tab_bar_margin_color=none \
+          -o active_tab_background='#32302f' -o active_tab_foreground='#c5b18d' -o active_tab_font_style=normal \
+          -o 'tab_bar_margin_height=5 3' -o tab_bar_margin_width=10 \
           $self inner "$@" </dev/null >|$state/panel.log 2>&1 &!
 
         local tries
@@ -293,7 +310,7 @@ let
         cd "''${SWITCH_PANEL_DIRECTORY:-$HOME}"
         export PATH=''${SWITCH_PANEL_PATH:-$PATH}
 
-        $kitty_panel progress $address $(columns) nix-switch &!
+        $kitty_panel progress $address $(( $(columns) - prefix )) switch &!
         local ticker=$!
 
         local start=$SECONDS
@@ -309,7 +326,7 @@ let
           local left
           for (( left = countdown; left > 0; left-- )); do
             [[ -e $state/interacted ]] && break
-            title "  ✓  nix-switch done in $took  ·  closing in ''${left}s"
+            title "✓ done in $took  ·  closing in ''${left}s"
             sleep 1
           done
 
@@ -317,10 +334,10 @@ let
             slide_out
             exit 0
           fi
-          title "  ✓  nix-switch done in $took  ·  Hyper+| to close"
+          title "✓ done in $took  ·  Hyper+| to close"
         else
           print -r -- failure > $state/outcome
-          title "  ✗  nix-switch failed (exit $code) after $took  ·  ctrl+d to close"
+          title "✗ failed (exit $code) after $took  ·  ctrl+d to close"
         fi
 
         # Stays until ctrl+d, which ends this shell and with it the panel. A

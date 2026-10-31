@@ -130,8 +130,16 @@ fn slide(panel: &mut Panel, direction: Direction, from: f64, to: f64, duration: 
 const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 // The tallest block the bar uses. Full height reads as a loading bar shouting
-// at you; stopping short keeps it a texture.
-const PEAK: f64 = 5.0;
+// at you; stopping at half keeps it a texture, alongside the dim colour the
+// tab title template gives it.
+const PEAK: f64 = 4.0;
+
+// Between the label, the bar and the clock in the title, so the tab title
+// template can colour each part: a title is plain text, and colour is only
+// available from the template. U+2063 INVISIBLE SEPARATOR rather than anything
+// printable, since nothing that ends up in a title can contain it, and if the
+// template ever failed to split on it, it would still not be seen.
+const SEPARATOR: char = '\u{2063}';
 
 // A title change re-renders the whole tab bar, and nothing about a slow swell
 // needs more than this.
@@ -174,19 +182,19 @@ fn elapsed(seconds: u64) -> String {
 }
 
 // Keeps the tab title animated until the process is killed, which is how the
-// caller stops it: it then sets the final title itself. `columns` is the
-// panel's width in cells, so the title fills the tab bar and the one tab is
-// the whole bar.
+// caller stops it: it then sets the final title itself. `columns` is the room
+// the template leaves for the title, so the one tab fills the whole bar.
 fn progress(panel: &mut Panel, label: &str, columns: usize) -> std::io::Result<()> {
     let start = Instant::now();
     loop {
         let seconds = start.elapsed().as_secs_f64();
         let clock = elapsed(seconds as u64);
 
-        // Two spaces of margin at each end and between the parts.
-        let used = label.chars().count() + clock.chars().count() + 8;
+        // Two spaces between the parts and after the clock; the template puts
+        // the margin and the logo in front of the label.
+        let used = label.chars().count() + clock.chars().count() + 6;
         let bar = wave(columns.saturating_sub(used), seconds);
-        let title = format!("  {label}  {bar}  {clock}  ");
+        let title = format!("{label}  {SEPARATOR}{bar}{SEPARATOR}  {clock}  ");
 
         panel.send("set-tab-title", &format!(r#"{{"title":{},"match":null}}"#, json_string(&title)))?;
         sleep(TICK);
