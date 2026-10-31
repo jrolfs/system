@@ -1,0 +1,53 @@
+// Rounds the corners of a kitty panel and draws a border just inside its edge.
+//
+// A panel is a borderless window, so macOS neither rounds it nor outlines it,
+// and kitty has no option for either: window_border_radius draws kitty's own
+// split borders inside the window, and does nothing alongside the
+// draw_minimal_borders that kitty.conf sets.
+//
+// The corner is a circle because that is what was measured. A window capture of
+// the main kitty with its alpha channel kept fits a circular arc of 32 device
+// pixels to within a pixel, against four to six for any superellipse, so this is
+// an exact rounded-rectangle distance field rather than the squircle an earlier
+// panel used.
+//
+// The distance field is also why the border needs no corner handling of its
+// own: every pixel knows how far it is from the rounded edge, and the border is
+// just the pixels within BORDER_PX of it, which follow the curve by
+// construction.
+//
+// Sizes are in device pixels, the only size a shader is handed. They are set
+// in switch-panel.pipeline.
+
+import kitty_custom_shader_types;
+
+static const float RADIUS_PX = 32.0;
+static const float BORDER_PX = 10.0;
+
+// Linear RGB, which is what kitty hands a shader. #282828, the split lines'
+// active_border_color in gruvbox-material dark soft.
+static const float3 BORDER_COLOR = float3(0.0212);
+static const float BORDER_ALPHA = 1.0;
+
+// Signed distance from the edge of a rectangle with rounded corners: negative
+// inside, positive outside, in the same units as its arguments.
+float rounded_rectangle(float2 pixel, float2 size, float radius) {
+    float2 q = abs(pixel - size * 0.5) - (size * 0.5 - radius);
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+public float4
+fragment_main(float4 color, KittyTextures t, KittyCustomShaderData d) {
+    float2 size = float2(d.viewport_size_pixels);
+    float distance = rounded_rectangle(t.pos * size, size, RADIUS_PX);
+
+    // A half-pixel band either side of each edge is what antialiases it rather
+    // than cutting it.
+    float inside = clamp(0.5 - distance, 0.0, 1.0);
+    float border = clamp(distance + BORDER_PX + 0.5, 0.0, 1.0);
+
+    // Premultiplied, like everything at this stage, so the border's colour is
+    // scaled by its own alpha before it is laid over the terminal.
+    float4 ring = float4(BORDER_COLOR * BORDER_ALPHA, BORDER_ALPHA);
+    return lerp(color, ring, border) * inside;
+}

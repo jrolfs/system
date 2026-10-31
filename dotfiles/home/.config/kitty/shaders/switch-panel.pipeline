@@ -1,0 +1,14 @@
+# Shaders for the nix-switch panel. One static group: the corner and border
+# only change when the panel is resized, so there is nothing to redraw on a
+# timer. Without animation_step 0 it would run every frame at 20fps forever.
+
+startgroup
+    animation_step 0
+
+    # Device pixels. 32 is the measured radius of the main kitty window's
+    # corner; 10 is a 5pt border on a 2x display.
+    var float RADIUS_PX = 32.0
+    var float BORDER_PX = 10.0
+
+    shaders rounded-border
+endgroup

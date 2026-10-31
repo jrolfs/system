@@ -69,6 +69,7 @@ in
     ./browsers.nix
     ./icloud.nix
     ./raycast.nix
+    ./switch-panel.nix
     ./wallpaper.nix
   ];
 
