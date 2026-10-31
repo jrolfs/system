@@ -61,6 +61,11 @@ in
           "google_translate"
           "group"
           "homekit"
+          # Not configured on Leia, but every HomeKit accessory on the LAN
+          # (Home Assistant's own bridges included) is discovered through it,
+          # and an undeclared integration turns each discovery into a
+          # ModuleNotFoundError for aiohomekit instead of a dismissable card.
+          "homekit_controller"
           "hue"
           "lifx"
           "lutron_caseta"
