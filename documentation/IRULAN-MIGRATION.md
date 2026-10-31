@@ -424,14 +424,13 @@ copied back the same way.
 
 #### Open for Jamie
 
-- **Bluetooth.** `default_config` includes Bluetooth, which Leia's container
-  never had. On Irulan it would scan with the same adapter the desktop's
-  keyboard, trackpad and the arcade's controllers use. Usually harmless, but
-  if it isn't, replace `default_config` with its parts minus `bluetooth`.
-- **DLNA renderer events.** `dlna_dmr` subscribes to the TV's events on a
-  random port, which Irulan's firewall drops. It falls back to polling. To get
-  push updates, set a fixed listen port in the integration's options after the
-  cutover and open it.
+- **DLNA renderer events.** The one `dlna_dmr` entry, "Frame Media", is the
+  Samsung Frame's built-in renderer, found by SSDP; it is unrelated to Plex or
+  the Apple TV, and the Frame's own controls come from `samsungtv_smart`.
+  `dlna_dmr` subscribes to the TV's events on a random port, which Irulan's
+  firewall drops, so it falls back to polling. Either delete the entry if
+  Home Assistant never plays media on the Frame, or set a fixed event listener
+  port in its options and open that port here.
 - **HACS** isn't carried over. A new custom integration is a derivation in
   `custom-components.nix`, as Dyson and Hatch are.
 
