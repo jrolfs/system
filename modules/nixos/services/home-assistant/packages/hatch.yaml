@@ -1,0 +1,251 @@
+# Exposes the Hatch Rest+ to HomeKit with real media controls.
+#
+# Two ha_hatch/HomeKit behaviours shape everything below:
+#
+#   1. media_play re-sends the device's current track, and media_pause/media_stop/
+#      turn_off all set that track to NONE. So play-after-stop is a no-op by
+#      construction. Playback is always driven via select_sound_mode instead, with
+#      the track remembered in input_select.hatch_sound.
+#   2. Only a media player with device_class receiver/tv/projector gets a rich
+#      HomeKit accessory; a speaker gets three near-useless switches. Hence the
+#      universal player wrapper below.
+#
+# HomeKit "off" stops the sound only - it does not cut power, so the nightlight is
+# unaffected. (media_player.turn_off cannot cut power anyway; only
+# switch.hatch_power_switch can.)
+
+input_select:
+  hatch_sound:
+    name: Hatch Sound
+    icon: mdi:music-note
+    options:
+      - Stream
+      - PinkNoise
+      - Dryer
+      - Ocean
+      - Wind
+      - Rain
+      - Bird
+      - Crickets
+      - Brahms
+      - Twinkle
+      - RockABye
+
+input_number:
+  # Remembered volume on a 0-100 scale, so the fan has something to render while
+  # the Hatch is off and reporting no volume_level. Only the fan and the volume
+  # script read it; the receiver reads the Hatch's real attribute.
+  hatch_volume:
+    name: Hatch Volume
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:volume-high
+
+script:
+  # Universal media player commands are cv.SERVICE_SCHEMA - a single service call
+  # each - so anything multi-step has to live in a script. Both scripts are shared
+  # by the receiver and the template fan so there is one definition of "play" and
+  # one of "set volume".
+  hatch_set_volume:
+    alias: Hatch / Set Volume
+    mode: restart
+    fields:
+      percent:
+        description: Volume as a percentage from 0 to 100
+        required: true
+        selector:
+          number:
+            min: 0
+            max: 100
+    sequence:
+      # Written first so the slider stays responsive while the Hatch is off, when
+      # it reports no volume_level for the mirror automation to copy back.
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.hatch_volume
+        data:
+          value: "{{ percent | float }}"
+      - action: media_player.volume_set
+        target:
+          entity_id: media_player.hatch_media_player
+        data:
+          volume_level: "{{ percent | float / 100 }}"
+
+  hatch_play_pause:
+    alias: Hatch / Play Pause
+    mode: single
+    sequence:
+      - if:
+          - condition: state
+            entity_id: media_player.hatch_media_player
+            state: playing
+        then:
+          - action: media_player.media_stop
+            target:
+              entity_id: media_player.hatch_media_player
+        else:
+          - action: media_player.select_sound_mode
+            target:
+              entity_id: media_player.hatch_media_player
+            data:
+              sound_mode: "{{ states('input_select.hatch_sound') }}"
+
+media_player:
+  - platform: universal
+    name: Hatch Sound Receiver
+    unique_id: hatch_sound_receiver
+    device_class: receiver
+    # Deliberately no children: supported_features would inherit the Hatch's and
+    # collapse to 0 whenever it reports off, and supported_features is in HomeKit's
+    # RELOAD_ON_CHANGE_ATTRS, so the accessory would be rebuilt on every power
+    # cycle. Bound straight to the Hatch instead, which makes supported_features a
+    # config-time constant of 23941.
+    state_template: >
+      {{ 'playing' if is_state('media_player.hatch_media_player', 'playing')
+         else 'off' }}
+    attributes:
+      # From the Hatch itself, not input_number.hatch_volume: a bare entity_id
+      # override yields that entity's state *string* on a 0-100 scale, where a
+      # 0-1 float is required.
+      volume_level: media_player.hatch_media_player|volume_level
+      source: input_select.hatch_sound
+      source_list: input_select.hatch_sound|options
+    commands:
+      # select_sound_mode also powers the device on, because the config entry has
+      # turn_on_media: true. media_play is bound to the same thing rather than the
+      # Hatch's own media_play, which would re-send NONE after a stop.
+      turn_on: &play
+        action: media_player.select_sound_mode
+        target:
+          entity_id: media_player.hatch_media_player
+        data:
+          sound_mode: "{{ states('input_select.hatch_sound') }}"
+      media_play: *play
+      turn_off: &stop
+        action: media_player.media_stop
+        target:
+          entity_id: media_player.hatch_media_player
+      media_pause: *stop
+      media_stop: *stop
+      # Reached by HomeKit's remote whenever the state is neither playing nor
+      # paused - i.e. every press while stopped. Without it, universal falls
+      # through to the active child, of which there is none, and silently no-ops.
+      media_play_pause:
+        action: script.hatch_play_pause
+      select_source:
+        action: media_player.select_sound_mode
+        target:
+          entity_id: media_player.hatch_media_player
+        data:
+          sound_mode: "{{ source }}"
+      volume_set:
+        action: script.hatch_set_volume
+        data:
+          percent: "{{ volume_level | float * 100 }}"
+      volume_up:
+        action: script.hatch_set_volume
+        data:
+          percent: "{{ [ states('input_number.hatch_volume') | float + 10, 100 ] | min }}"
+      volume_down:
+        action: script.hatch_set_volume
+        data:
+          percent: "{{ [ states('input_number.hatch_volume') | float - 10, 0 ] | max }}"
+
+template:
+  # Apple Home renders a receiver's power and input picker but not its volume
+  # slider, so volume gets its own accessory. A fan rather than a light so "turn
+  # off the lights" doesn't catch it alongside the real Hatch light.
+  - fan:
+      - name: Hatch Volume
+        unique_id: hatch_volume
+        icon: mdi:volume-high
+        state: "{{ is_state('media_player.hatch_media_player', 'playing') }}"
+        percentage: "{{ states('input_number.hatch_volume') | float(0) }}"
+        turn_on:
+          - action: media_player.select_sound_mode
+            target:
+              entity_id: media_player.hatch_media_player
+            data:
+              sound_mode: "{{ states('input_select.hatch_sound') }}"
+        turn_off:
+          - action: media_player.media_stop
+            target:
+              entity_id: media_player.hatch_media_player
+        set_percentage:
+          - action: script.hatch_set_volume
+            data:
+              percent: "{{ percentage }}"
+
+automation:
+  - id: hatch_remember_last_sound
+    alias: Hatch / Remember Last Sound
+    description: >
+      Keeps input_select.hatch_sound on the last real track so HomeKit power-on can
+      resume it. ha_hatch reports sound_mode NONE while stopped and drops the
+      attribute entirely while off, so both are filtered out here.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: media_player.hatch_media_player
+        attribute: sound_mode
+    conditions:
+      - condition: template
+        value_template: >
+          {{ trigger.to_state.attributes.sound_mode
+             in state_attr('input_select.hatch_sound', 'options') }}
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.hatch_sound
+        data:
+          option: "{{ trigger.to_state.attributes.sound_mode }}"
+
+  - id: hatch_mirror_volume
+    alias: Hatch / Mirror Volume
+    description: >
+      Mirrors volume changes made outside HomeKit (HA UI, Hatch app) back into
+      input_number.hatch_volume, which is what the fan renders.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: media_player.hatch_media_player
+        attribute: volume_level
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.volume_level is not none }}"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.hatch_volume
+        data:
+          value: >
+            {{ (trigger.to_state.attributes.volume_level | float * 100) | round(0) }}
+
+homekit:
+  # A receiver media player requires accessory mode, which is one accessory per
+  # bridge, so the sound gets its own instance. These are YAML rather than UI
+  # entries because entity_config has no UI equivalent - it is what gives the
+  # accessory a HomeKit-specific name and links the battery sensor.
+  #
+  # YAML homekit entries are matched by name: renaming one creates a new entry and
+  # forces re-pairing in Apple Home.
+  - name: Hatch Sound
+    port: 21080
+    mode: accessory
+    filter:
+      include_entities:
+        - media_player.hatch_sound_receiver
+    entity_config:
+      media_player.hatch_sound_receiver:
+        name: Hatch Sound
+        linked_battery_sensor: sensor.hatch_battery
+
+  - name: Hatch
+    port: 21081
+    mode: bridge
+    filter:
+      include_entities:
+        - light.hatch_light
+        - fan.hatch_volume

@@ -21,6 +21,7 @@
 
     ../../modules/nixos/services/komodo.nix
     ../../modules/nixos/services/plex.nix
+    ../../modules/nixos/services/home-assistant
     ../../modules/nixos/services/agent-vm.nix
 
     # Needs state that still lives on Leia and is placed by hand before first
