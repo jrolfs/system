@@ -24,9 +24,30 @@ let
 
     pythonImportsCheck = [ "hatch_rest_api" ];
   };
+
+  # Home Assistant's own broadlink integration needs this, and nixpkgs lists it
+  # as a missing input, so without it the integration fails to import. The
+  # version is the one Home Assistant pins in its broadlink manifest; bump it
+  # with Home Assistant.
+  broadlink-async = python3Packages.buildPythonPackage rec {
+    pname = "broadlink_async";
+    version = "1.1.0";
+    pyproject = true;
+
+    src = fetchPypi {
+      inherit pname version;
+      hash = "sha256-ZZokcEaBes7Kt+99GMj6rbuu6BKUkEkzERIpJOzoC0M=";
+    };
+
+    build-system = [ python3Packages.setuptools ];
+
+    dependencies = [ python3Packages.cryptography ];
+
+    pythonImportsCheck = [ "broadlink_async" ];
+  };
 in
 {
-  inherit hatch-rest-api;
+  inherit broadlink-async hatch-rest-api;
 
   # Vendors its own copy of libdyson, so it has no requirements beyond the
   # mqtt and zeroconf components it declares as dependencies.

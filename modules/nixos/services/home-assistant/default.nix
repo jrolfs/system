@@ -109,6 +109,9 @@ in
           custom.ha-hatch
         ];
 
+        # Libraries a declared integration needs that nixpkgs doesn't package.
+        extraPackages = _: [ custom.broadlink-async ];
+
         # Translated from rolfs.lan's tracked configuration.yaml. Strings
         # starting with "!" are written out as YAML tags, so the includes stay
         # includes and the UI keeps editing automations.yaml, scripts.yaml and
