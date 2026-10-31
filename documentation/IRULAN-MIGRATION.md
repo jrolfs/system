@@ -128,7 +128,7 @@ interpolation (`[[NAME]]`) and files rendered on the host by the same
 | Komodo periphery | container on Leia | stays on Leia; a second one on Irulan, native | 1 | none |
 | Uptime Kuma | Leia stack | Irulan, stack `irulan-monitoring` | 2 | `/share/Docker/Containers/uptime-kuma/data` |
 | dhcp-probe | Leia stack, macvlan `.99` | Irulan, stack `irulan-monitoring` | 2 | none; MAC `02:42:0a:0a:0a:63` is pinned to its Kea reservation |
-| Home Assistant | Leia stack, macvlan `.2` | Irulan, native (`home-assistant.nix`), keeping `.2` as a second address | 4 | `/share/Docker/Containers/home-assistant/config` |
+| Home Assistant | Leia stack, macvlan `.2` | Irulan, native (`modules/nixos/services/home-assistant/`), keeping `.2` as a second address | 4 | `/share/Docker/Containers/home-assistant/config` |
 | Matter server | Leia stack, host network | Irulan, native (`services.matter-server`) | 4 | `/share/Docker/Containers/matter/data` (the fabric credentials) |
 | Pi-hole | Leia stack, macvlan `.1` | Irulan, stack `irulan-dns` | 5 | `/share/Docker/Containers/pihole/config`; MAC `02:42:a0:a0:e4:fd` |
 | Traefik | Leia stack | Irulan, stack `irulan-edge` | 6 | `traefik-acme` volume (`letsencrypt.json`, `step.json`) |
@@ -145,9 +145,10 @@ interpolation (`[[NAME]]`) and files rendered on the host by the same
 `step-ca.nix` in `modules/nixos/services/` was written for a native move, and
 this plan recommends a container for step-ca instead (phase 6 says why), so
 treat that module as the alternative rather than the plan of record.
-`home-assistant.nix` is the plan of record for phase 4, but is not imported on
-Irulan until then: from Irulan's first scaffold it ran a Home Assistant nobody
-had set up, with its onboarding page open on the LAN.
+`modules/nixos/services/home-assistant/` is the plan of record for phase 4,
+imported on Irulan but off until then. From Irulan's first scaffold until
+October 2026 it ran a Home Assistant nobody had set up, with its onboarding
+page open on the LAN.
 
 ## Phases
 
@@ -262,53 +263,177 @@ If the library moves:
 
 ### Phase 4: Home Assistant and the Matter server
 
-Both native NixOS services, not a Komodo stack: Home Assistant through
-`modules/nixos/services/home-assistant.nix`, and the Matter server through
-nixpkgs' `services.matter-server` (Python Matter Server, the same software
-Leia's `ghcr.io/matter-js/python-matter-server` image runs). Jamie wants Home
-Assistant configured in Nix, and both want the host network: Matter needs
-IPv6 and multicast discovery on the LAN (Irulan's `enp3s0` already has
-IPv6), and on the host network the two reach each other on localhost, with
-no macvlan between them.
+Both native NixOS services, not a Komodo stack, in
+`modules/nixos/services/home-assistant/` behind `homeAssistant.enable`:
+Home Assistant through nixpkgs' `services.home-assistant`, and the Matter
+server through `services.matter-server` (Python Matter Server, the same
+software Leia's `ghcr.io/matter-js/python-matter-server` image runs). Jamie
+wants Home Assistant configured in Nix, and both want the host network: Matter
+needs IPv6 and multicast discovery on the LAN, and on the host network the two
+reach each other on localhost, with no macvlan between them.
 
-The costs, and how each is met:
+Imported on Irulan but off. Branch `home-assistant-native`.
 
-- **Integrations are declared.** The module installs Python dependencies only
-  for components it is told about, so every integration Leia's instance uses
-  goes in `extraComponents`, and every HACS integration in `customComponents`
-  (nixpkgs packages many under `home-assistant-custom-components`; the rest
-  get a small derivation each). The inventory comes from Leia's
-  `.storage/core.config_entries` and `custom_components/` before anything
-  moves. Dashboard cards go in `customLovelaceModules` the same way.
-- **Configuration moves into Nix.** `services.home-assistant.config` replaces
-  rolfs.lan's tracked `configuration.yaml`, and its `packages/` move into this
-  repo, included from the config. The UI keeps working where it does today:
-  `automations.yaml`, `scripts.yaml` and `scenes.yaml` stay writable files in
-  `/var/lib/hass`, included with `!include`, so UI-made automations are
-  unaffected.
-- **The address stays.** Home Assistant has to give up its own macvlan
-  interface, so Irulan takes `10.10.10.2` as a second address on `enp3s0`
-  (`networking.interfaces.enp3s0.ipv4.addresses`). Home Assistant binds every
-  address, so anything that remembers `.2`, from device integrations to the
-  companion apps, keeps working. Traefik's route moves to it unchanged.
-- **Versions must not go backwards.** Home Assistant's `.storage` and database,
-  and the Matter server's storage, migrate forward only. Read Leia's versions
-  first (`latest` and `stable` are tags, not versions) and confirm nixpkgs'
-  are the same or newer; at the time of writing nixpkgs has Home Assistant
-  2026.10.2 and Python Matter Server 8.1.2.
+#### What Leia runs (read 2026-10-31)
 
-- **Order**: the two move together, since HA talks to the Matter server and
-  the Matter fabric credentials live in its `/data`. Leia's Home Assistant
-  has to be stopped before Irulan takes `.2`.
-- **State**: both data directories, copied with both containers stopped:
-  Home Assistant's to `/var/lib/hass` (its `secrets.yaml` moves with it), the
-  Matter server's to its state directory (`/var/lib/private/matter-server`,
-  since the module runs it under `DynamicUser`), owned to match.
-- **Before the cutover**: build and start both on Irulan without `.2` and
-  with an empty config directory, to confirm every declared component and
-  custom integration loads, then stop them.
-- **Rollback**: stop on Irulan, start on Leia. Leia's copy is as of the
-  cutover, so changes made on Irulan in between are lost unless copied back.
+| | Leia | Irulan (pinned nixpkgs) |
+|---|---|---|
+| Home Assistant | 2026.10.4 (`homeassistant/home-assistant:latest`) | 2026.10.4 |
+| Python Matter Server | 8.1.2 (`:stable`) | 8.1.2 |
+| Config directory | 574 MB, of which the recorder database is 90 MB | |
+| Matter data | 1.9 MB | |
+
+Both match exactly. Re-check before the cutover: both of Leia's tags float,
+and Home Assistant's `.storage` and database, like the Matter server's
+storage, only migrate forward. Irulan's must never be older.
+
+Integrations, from 59 config entries in `.storage/core.config_entries` plus
+the YAML:
+
+| Kind | Integrations | How Irulan gets them |
+|---|---|---|
+| Config entries | analytics, apple_tv (7), backblaze_b2, backup, broadlink, dlna_dmr, go2rtc, google_translate, group, homekit (14), hue, lifx, lutron_caseta, matter, met, mobile_app (5), radio_browser, shelly, shopping_list, sun, switchbot_cloud, thread, tplink (2), upnp, wake_on_lan, wemo, yoto | `extraComponents` |
+| Disabled config entries | samsungtv (2), smartthings | `extraComponents`, so they can still be re-enabled |
+| YAML (`packages/hatch.yaml`) | template, a `universal` media player, input_select, input_number, scripts, automations, two HomeKit bridges | `extraComponents` for template and universal; the rest come with `default_config` |
+| Custom, packaged in nixpkgs | samsungtv_smart 0.14.5 | `home-assistant-custom-components.samsungtv-smart` |
+| Custom, not packaged | dyson_local 1.5.7 (vendors libdyson), ha_hatch 1.31.9 (needs `hatch_rest_api` 1.34.5, not in nixpkgs either) | derivations in `custom-components.nix`, pinned by hash |
+| Custom, not carried over | HACS 2.0.5; humidity_intelligence 2.1.1 | HACS installs into `custom_components` at runtime, which the module owns. humidity_intelligence has no config entry on Leia, only leftover entities |
+| Dashboard cards | none (no `lovelace_resources`) | |
+| Blueprints | Home Assistant's bundled four (motion_light, notify_leaving_zone, confirmable_notification, inverted_binary_sensor) | they ship with Home Assistant |
+
+Every name was checked against the pinned package's `availableComponents`, and
+the package and all three custom components evaluate. Nothing in the YAML or
+the UI-managed files refers to `/share` or to Leia by address, and there are
+no USB radios or Bluetooth passthrough.
+
+How the pieces reach each other today, and what changes:
+
+- **Home Assistant reaches the Matter server at `ws://10.10.10.12:5580/ws`**,
+  Leia's own address. On Irulan it becomes `ws://localhost:5580/ws`, which is
+  an edit to the Matter config entry (step 6 below). The Matter server's port
+  stays closed to the LAN.
+- **The Matter server's vendor ID.** Leia's runs with the server's default,
+  65521, and its fabric was created with it. The nixpkgs module passes Home
+  Assistant's, 4939, so the module overrides it back through `extraArgs`.
+- **Thread routing already works on Irulan.** It learns the Thread prefix
+  (`fdec:a7bd:2c51::/64`) from router advertisements through dhcpcd, where
+  Leia carries it as a static route.
+- **HomeKit** has 14 bridges on ports 21064–21081, opened with 21063 for the
+  next one. Pairings live in `.storage/homekit.*` and move with it. The two in
+  `hatch.yaml` are matched by name, so that file moves verbatim.
+- **Firewall**: 8123, the HomeKit range, mDNS (5353/udp), and SSDP replies
+  (from source port 1900 on the LAN, since connection tracking doesn't relate
+  them to the multicast search).
+- **Traefik** already routes `homeassistant` to `http://10.10.10.2:8123`, and
+  `trusted_proxies` stays Leia's address until Traefik moves (phase 6).
+
+#### Dry run
+
+Proves the service starts, the custom components install and the Matter
+server comes up, without touching anything Leia's instance owns. It can't
+prove every integration sets up, since an empty config has no config entries
+to load; the package build is what guarantees their dependencies are present.
+
+1. On the branch, set `homeAssistant.enable = true` in
+   `hosts/irulan/default.nix`, leaving `serveLegacyAddress` off, and push.
+   On Irulan, `wt switch home-assistant-native` in `~/.config/system`, then
+   `nix-switch` from inside that worktree. The next switch from the main
+   checkout puts main back.
+2. `journalctl -u home-assistant -u matter-server -b` shows both starting, and
+   `ls -l /var/lib/hass/custom_components` the three links. Don't onboard
+   through `http://irulan.rolfs.lan:8123`: the cutover replaces this state.
+3. `sudo systemctl stop home-assistant matter-server`.
+
+#### Cutover
+
+Home Assistant is down from step 2 to step 8, about as long as the copy takes.
+
+1. **Pin the versions.** On Leia, read both
+   (`D=/share/MD0_DATA/.qpkg/container-station/bin/docker`;
+   `$D inspect home-assistant --format '{{index .Config.Labels "org.opencontainers.image.version"}}'`,
+   `$D exec matter pip show python-matter-server`) and confirm Irulan's are
+   the same or newer: `nix eval --raw .#nixosConfigurations.irulan.config.services.home-assistant.package.version`.
+2. **Stop Leia's, and keep them stopped.** Home Assistant has
+   `restart: always`, so a NAS reboot would bring it back onto `.2`:
+   ```sh
+   $D update --restart=no home-assistant matter
+   $D stop home-assistant matter
+   ```
+   A Komodo deploy of Leia's stack would also recreate both, so don't deploy
+   it until rolfs.lan has them behind a Compose profile (as `leia/komodo` does
+   for Core) or removed.
+3. **Clear the dry run's state on Irulan.** The dry-run Matter server created
+   a fabric of its own, which must not survive:
+   ```sh
+   sudo systemctl stop home-assistant matter-server
+   sudo find /var/lib/hass -mindepth 1 -delete
+   sudo find /var/lib/private/matter-server -mindepth 1 -delete
+   ```
+4. **Copy the Matter server's data.** From an SSH session on Irulan with the
+   agent forwarded from the Mac, so Irulan can reach Leia:
+   ```sh
+   ssh admin@leia 'tar -C /share/Docker/Containers/matter/data -cf - .' \
+     | sudo tar -C /var/lib/private/matter-server -xpf -
+   ```
+   Ownership doesn't matter here: the service runs under `DynamicUser`, and
+   systemd hands its state directory to that user when it starts.
+5. **Copy Home Assistant's data**, leaving out what the module owns or what
+   is specific to the container: `configuration.yaml` and `packages/` (now in
+   Nix), `custom_components/` (the module links its own, and would refuse to
+   replace real directories), `deps/` (pip installs for the container's
+   Python), and logs. `backups/` is left out too, since Backblaze holds the
+   copies that matter; include it if a local one should come along.
+   ```sh
+   ssh admin@leia 'tar -C /share/Docker/Containers/home-assistant/config \
+     --exclude=./configuration.yaml --exclude=./packages \
+     --exclude=./custom_components --exclude=./deps --exclude=./backups \
+     --exclude="./home-assistant.log*" -cf - .' \
+     | sudo tar -C /var/lib/hass -xpf -
+   sudo chown -R hass:hass /var/lib/hass
+   ```
+6. **Point the Matter integration at localhost.** With Home Assistant still
+   stopped, edit only the URL in its config entry:
+   ```sh
+   sudo python3 - <<'EOF'
+   import json
+   p = "/var/lib/hass/.storage/core.config_entries"
+   d = json.load(open(p))
+   for e in d["data"]["entries"]:
+       if e["domain"] == "matter":
+           e["data"]["url"] = "ws://localhost:5580/ws"
+   json.dump(d, open(p, "w"), indent=4)
+   EOF
+   sudo chown hass:hass /var/lib/hass/.storage/core.config_entries
+   ```
+7. **Take the address and start.** Set `serveLegacyAddress = true` beside
+   `enable`, commit, and switch. Then announce the address's new MAC, since
+   devices still have Leia's macvlan MAC for `.2` cached:
+   `nix shell nixpkgs#iputils -c sudo arping -U -I enp3s0 -c 3 10.10.10.2`.
+8. **Verify**: `https://homeassistant.rolfs.casa` loads through Traefik; Matter
+   devices respond; Apple Home's accessories respond (HomeKit); Hatch, Dyson
+   and the Samsung TV integrations are set up; a UI automation fires.
+9. **rolfs.lan**: Leia's `home-assistant/` and `matter` services leave the
+   Compose file, and `home-assistant/config/` goes with them, since
+   `hatch.yaml` now lives here. Keep that as its own commit, after the soak.
+
+**Rollback**, at any step: set both options off and switch (that releases
+`.2`), then on Leia `$D update --restart=always home-assistant` and
+`--restart=unless-stopped matter`, and `$D start home-assistant matter`.
+Leia's data is as of step 2, so changes made on Irulan since are lost unless
+copied back the same way.
+
+#### Open for Jamie
+
+- **Bluetooth.** `default_config` includes Bluetooth, which Leia's container
+  never had. On Irulan it would scan with the same adapter the desktop's
+  keyboard, trackpad and the arcade's controllers use. Usually harmless, but
+  if it isn't, replace `default_config` with its parts minus `bluetooth`.
+- **DLNA renderer events.** `dlna_dmr` subscribes to the TV's events on a
+  random port, which Irulan's firewall drops. It falls back to polling. To get
+  push updates, set a fixed listen port in the integration's options after the
+  cutover and open it.
+- **HACS** isn't carried over. A new custom integration is a derivation in
+  `custom-components.nix`, as Dyson and Hatch are.
 
 ### Phase 5: Pi-hole
 
