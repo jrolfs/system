@@ -109,7 +109,31 @@ in
         # includes and the UI keeps editing automations.yaml, scripts.yaml and
         # scenes.yaml in the config directory.
         config = {
-          default_config = { };
+          # default_config's integrations, listed out (from its manifest in
+          # this Home Assistant release) so bluetooth can be left off. It would
+          # claim the adapter Irulan's keyboard, trackpad and controllers use,
+          # and Leia's Home Assistant never had Bluetooth. Re-check the list
+          # against default_config's manifest when Home Assistant updates.
+          assist_pipeline = { };
+          cloud = { };
+          conversation = { };
+          dhcp = { };
+          energy = { };
+          file = { };
+          go2rtc = { };
+          history = { };
+          homeassistant_alerts = { };
+          logbook = { };
+          media_source = { };
+          mobile_app = { };
+          my = { };
+          ssdp = { };
+          stream = { };
+          sun = { };
+          usage_prediction = { };
+          usb = { };
+          webhook = { };
+          zeroconf = { };
 
           homeassistant.packages = "!include_dir_named ${./packages}";
 
@@ -161,6 +185,29 @@ in
           iptables -A nixos-fw -p udp -s 10.10.10.0/24 --sport 1900 -j nixos-fw-accept
         '';
       };
+    }
+
+    # Keeps Home Assistant off Irulan's own Bluetooth adapter, which the
+    # keyboard, trackpad and controllers use. Leaving bluetooth out of the
+    # config isn't enough: shelly lists it as a dependency, so it loads anyway
+    # (for Shelly devices acting as Bluetooth proxies over the network, which
+    # this doesn't affect). Local adapters are reached through BlueZ on the
+    # system bus, so the hass user is refused that, and raw HCI sockets too.
+    {
+      systemd.services.home-assistant.serviceConfig.RestrictAddressFamilies =
+        lib.mkForce [ "AF_INET" "AF_INET6" "AF_NETLINK" "AF_UNIX" "AF_PACKET" ];
+
+      services.dbus.packages = [
+        (pkgs.writeTextDir "share/dbus-1/system.d/home-assistant-no-bluez.conf" ''
+          <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+            "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+          <busconfig>
+            <policy user="hass">
+              <deny send_destination="org.bluez"/>
+            </policy>
+          </busconfig>
+        '')
+      ];
     }
 
     (lib.mkIf cfg.serveLegacyAddress {
