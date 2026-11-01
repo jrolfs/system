@@ -42,6 +42,11 @@ let
 
       video_fullscreen = "true";
 
+      # A saved PulseAudio sink name is not an ALSA PCM device. Keep the driver
+      # and device selection together, following the arcade user's default sink.
+      audio_driver = "pulse";
+      audio_device = "";
+
       # Start+Select quits back to the game menu. The PS button stays RetroArch's
       # own menu, through the controller's autoconfig profile.
       input_quit_gamepad_combo = "4";

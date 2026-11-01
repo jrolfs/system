@@ -126,6 +126,16 @@ After that, pressing PS wakes and reconnects the pad. The kernel's
 RetroArch (by its autoconfig profiles) and Pegasus (through SDL) map them
 without any configuration.
 
+## Audio
+
+RetroArch uses PipeWire's PulseAudio interface and follows the arcade user's
+default output. Its driver and empty device override are declared in
+`modules/nixos/arcade/default.nix`, overriding saved RetroArch settings. This
+avoids passing a PulseAudio sink name to ALSA, which fails with `Unknown PCM`.
+
+Output selection and volume belong to the `arcade` user's PipeWire session,
+not Jamie's SSH session. HDMI routing is not pinned by this configuration.
+
 ## The theme
 
 Pegasus's default theme, pegasus-theme-grid, recolored from
