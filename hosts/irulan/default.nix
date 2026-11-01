@@ -39,6 +39,9 @@
   komodo.core = {
     enable = true;
     activate = false;
+    # Leia's Core was v2.1.2 when its database moved here, and a database
+    # only migrates forward; 2.3.3 is also Irulan's periphery, from nixpkgs.
+    imageTag = "2.3.3";
   };
 
   # Home Assistant and the Matter server, moved here from Leia in phase 4 of
