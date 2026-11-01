@@ -163,7 +163,7 @@ holds the value and flags old ones in Watchtower.
 
 | Service | Today | Destination | Phase | State to move |
 |---|---|---|---|---|
-| Plex | QPKG on Leia | Irulan, NixOS module | 1 (parallel), 3 (cutover) | the QPKG's `Library/Plex Media Server`, if the library moves (phase 3) |
+| Plex | QPKG on Leia (stopped, disabled) | Irulan, NixOS module, with Leia's library | 3 (done) | moved: the QPKG's `Library/Plex Media Server` |
 | Komodo periphery | container on Leia | stays on Leia; a second one on Irulan, native | 1 | none |
 | Uptime Kuma | Leia stack | Irulan, stack `irulan-monitoring` | 2 | `/share/Docker/Containers/uptime-kuma/data` |
 | dhcp-probe | Leia stack, macvlan `.99` | Irulan, stack `irulan-monitoring` | 2 | none; MAC `02:42:0a:0a:0a:63` is pinned to its Kea reservation |
@@ -296,24 +296,43 @@ Irulan stack first: dhcp-probe's MAC and address can't be up twice).
 
 ### Phase 3: Plex cutover
 
-Decide first between keeping the fresh server from phase 1 and moving the
-QPKG's library. Moving the library keeps watch state, collections, and the
-server's identity (so clients and shared users follow without being re-invited).
-Keeping the fresh server is simpler, but loses all of that.
+**Done** on 2026-11-01, moving Leia's library rather than keeping the fresh
+server from phase 1, which was never claimed and was set aside. About 13
+minutes without Plex (02:25 to 02:38).
 
-If the library moves:
+What moved, and how:
 
-- Mount the NFS share at `/share/Media` as well (or instead), so the
-  QPKG's library paths resolve on Irulan unchanged. Otherwise every library
-  path in the database needs rewriting.
-- Stop the QPKG. Copy its `Library/Plex Media Server` directory
-  (under `/share/MD0_DATA/.qpkg/PlexMediaServer`) over `/var/lib/plex`'s,
-  replacing the phase-1 server. Never run both afterwards: they would share
-  one identity.
-- Point the `plex` service in `servers.yml` at Irulan, and drop `plex-irulan`.
-  Retarget the Meter NAT rule for 32400 to `10.10.10.14`.
-- Rollback: stop Plex on Irulan, start the QPKG, revert `servers.yml` and the
-  NAT rule. The QPKG's copy is the state as of the cutover.
+- **Server identity and state.** The QPKG's `Library/Plex Media Server`
+  (8.6 GB, 35,501 files) was streamed over SSH from Leia straight into
+  `/var/lib/plex`, with Plex stopped on both sides so the database's WAL was
+  already checkpointed. Left behind as regenerable or QNAP-specific: `Cache`,
+  `Codecs`, `Drivers`, `Logs`, `Crash Reports`, `Updates`. The server keeps
+  its machine identifier (`decc6b1d…`) and its claim, so the six shared users
+  and every client follow without re-inviting or re-pairing. Checks after the
+  start: file counts identical, `PRAGMA quick_check` ok (23,979 metadata
+  items, 2,903 with watch state), every section's item count equal to Leia's,
+  and Plex.tv advertising Irulan's addresses.
+- **Version.** Leia ran 1.43.5.11079 and the database only migrates forward,
+  while nixpkgs (master included) was still on 11029. `plex.nix` overrides the
+  package to 11079 only while nixpkgs is older, so it lapses after an update.
+- **Paths.** The library recorded media under both `/share/Media` and
+  `/share/MD0_DATA/Media`. Irulan mounts the export at both (and at
+  `/mnt/nas/media`), so no path in the database was rewritten.
+- **Settings changed:** `autoEmptyTrash="0"` was added to `Preferences.xml`
+  before the first start, so a scan while the NAS is unreachable can't drop
+  items. Hardware acceleration was already on.
+- **Traefik:** the `plex` service in `servers.yml` points at
+  `irulan.rolfs.lan:32400`. There was no `plex-irulan` route to drop: the
+  phase-1 branch adding it was never merged.
+
+Left for Jamie: retarget the Meter NAT rule for 32400 on OPT1 to `10.10.10.9`,
+and check Settings → Remote Access in Plex reports the server as reachable.
+
+Rollback: `systemctl stop plex` on Irulan, then on Leia `qpkg_service enable
+PlexMediaServer && qpkg_service start PlexMediaServer`, and point the `plex`
+service in `servers.yml` back at `leia.rolfs.lan:32400`. Leia's copy is as of
+the cutover. Never run both: they share one identity. After the soak, delete
+the QPKG and `/var/lib/plex/Plex Media Server.unclaimed-spare` on Irulan.
 
 ### Phase 4: Home Assistant and the Matter server
 
