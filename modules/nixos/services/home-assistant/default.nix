@@ -234,6 +234,13 @@ in
     }
 
     (lib.mkIf cfg.serveLegacyAddress {
+      # useDHCP is the load-bearing line. NixOS adds any interface with a
+      # static address to dhcpcd's denyinterfaces unless DHCP is asked for on
+      # it explicitly, so without this the first cutover left enp3s0 with no
+      # address at all: the lease went, and Irulan dropped off the network
+      # mid-activation. With it, dhcpcd keeps Irulan's own address and the
+      # second one is added beside it.
+      networking.interfaces.enp3s0.useDHCP = true;
       networking.interfaces.enp3s0.ipv4.addresses = [
         {
           address = "10.10.10.2";
