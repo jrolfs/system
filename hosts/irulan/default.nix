@@ -36,6 +36,17 @@
   # Leia's database and Core's key pair were carried over, which happened on
   # 2026-11-01; turning it off again stops Core here, the start of rolling back.
   komodo.periphery.enable = true;
+
+  # The irulan-monitoring Komodo stack (rolfs.lan's irulan/monitoring), phase 2
+  # of documentation/IRULAN-MIGRATION.md. Kuma's database lives here rather
+  # than in the periphery's clone, so redeploys never touch it.
+  systemd.tmpfiles.rules = [ "d /srv/monitoring/uptime-kuma 0750 root root - -" ];
+
+  # Kuma's Matter monitor reaches the Matter server on this host from the
+  # stack's bridge, which the compose file names br-monitoring. Only that
+  # network gets the port: the Matter server's API is unauthenticated, so it
+  # isn't opened to the LAN.
+  networking.firewall.interfaces.br-monitoring.allowedTCPPorts = [ 5580 ];
   komodo.core = {
     enable = true;
     activate = true;
