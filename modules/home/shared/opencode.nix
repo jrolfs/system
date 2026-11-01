@@ -21,24 +21,34 @@
 #   (~/.claude/projects/<slug>). opencode keys a project by its repo's first
 #   commit and keeps everything in one SQLite database
 #   (~/.local/share/opencode/opencode.db).
-# - Sync: claude-sync (claude-sync.nix, patched in overlays/claude-sync/) pushes
-#   and pulls ~/.claude through B2 from SessionStart and Stop hooks. A live
-#   SQLite file can't be synced like that. The likely analog is one
-#   `opencode serve` on irulan that every machine attaches to.
+# - Conversation sync: claude-sync carries the shared memory below, not
+#   opencode's SQLite database. Never sync that live file. Resuming opencode
+#   conversations on another host still needs a separate design.
 # - Moving threads: claude-mv-project re-keys a store when its directory moves,
 #   and wt-relocate runs it per worktree. Probably moot if commit keying holds
 #   across worktrees.
-# - Handoff: wt handoff/restore carry a worktree's dirty state between machines
-#   and pull claude-sync first so its threads resume at the same path.
+# - Handoff: wt handoff/restore carry a worktree's dirty state and push/pull
+#   claude-sync, shared memory included. They don't transfer opencode threads.
 # - Zed: claude-zed-sync carries and moves Zed's agent-panel thread records, and
 #   resume-zed / claude-zed-threads list ACP threads with resume commands.
 #   Check what opencode's ACP agent keeps itself.
 # - Kitty: worktree/switch.py swaps panes on `wt switch` and leaves the Claude
 #   pane alone. Likely moot if threads follow the project.
 # - MCP: shared below. Remote servers need opencode's own OAuth once per
-#   machine (`opencode mcp auth <server>`).
+#   machine (sign in through `/mcps`).
 
 let
+  localPlugin = name: source: pkgs.runCommandLocal name {
+      nativeBuildInputs = [ pkgs.nodejs ];
+    } ''
+      cp ${source}/*.ts .
+      node --test index.test.ts
+      install -Dm644 index.ts $out/index.ts
+    '';
+
+  syncPlugin = localPlugin "opencode-claude-sync" ./opencode-sync;
+  routingPlugin = localPlugin "opencode-task-router" ./opencode-router;
+
   # opencode provider ID to the bootstrap secrets.json entry holding its key.
   # Qwen would be `alibaba` (pay-as-you-go DashScope, international endpoint)
   # once it has an entry.
@@ -72,16 +82,16 @@ let
   };
 
   # The auto-mode review pipeline, cheapest first. Each stage either decides
-  # (allow, deny or ask) or abstains to the next, and if every stage abstains
-  # the action is a prompt.
+  # (allow, deny or ask) or abstains to the next. Jev's asks fall through to
+  # Claude too. If Claude asks or every stage abstains, the action is a prompt.
   #
   # - static: fixed rules, no network. Denies known-dangerous commands and
   #   allows plain read-only ones.
   # - TypeSafe's Jev, where this host has the key: a typed decision model
   #   that answers with calibrated confidence in tens of milliseconds. Below
-  #   0.9 confidence an allow abstains and a deny asks, so it only settles
-  #   clear cases. It receives the pending action and the visible
-  #   transcript, so it's on the personal machines only.
+  #   0.9 confidence an allow abstains and a deny asks. Asks reach the stronger
+  #   reviewer, so Jev only settles clear cases. It receives the pending action
+  #   and the visible transcript, so it's on the personal machines only.
   # - A Claude model as the reviewer of last resort: the plugin's two-pass
   #   review (quick triage, then reasoning on anything flagged) under its
   #   built-in policy, which follows Claude Code's auto mode. Sonnet with the
@@ -94,6 +104,7 @@ let
       type = "decision";
       model = "typesafe-ai/jev-latest";
       apiKeyFile = config.secrets.files.typesafe-api-key;
+      fallbackOnAsk = true;
     }
     ++ [
       ({ type = "llm"; }
@@ -110,6 +121,28 @@ let
     if available ? anthropic then { fast = "anthropic/claude-haiku-4-5"; strong = "anthropic/claude-sonnet-5-5"; }
     else if foundry then { fast = "foundry/claude-haiku-4-5"; strong = "foundry/claude-opus-5-5"; }
     else null;
+
+  # Route by capabilities for now. Cost, provider priority and account budgets
+  # could filter or rank this pool later, but must not weaken the fixed reviewer.
+  delegatedModels = lib.optionals (available ? openai) [
+    {
+      model = "openai/gpt-6-luna";
+      description = "Straightforward, bounded lookups, summaries and simple boilerplate with clear requirements.";
+    }
+    {
+      model = "openai/gpt-6.1-sol";
+      description = "Deep code tracing, difficult debugging, algorithms and reasoning-heavy implementation.";
+    }
+  ] ++ lib.optionals (available ? anthropic) [
+    {
+      model = "anthropic/claude-sonnet-5-5";
+      description = "Everyday feature implementation, refactoring, research and code review of moderate complexity.";
+    }
+    {
+      model = "anthropic/claude-opus-5-5";
+      description = "Architecture, ambiguous requirements, cross-module changes and high-risk system configuration or security work.";
+    }
+  ];
 in
 {
   programs.opencode = {
@@ -154,7 +187,7 @@ in
       # unless a rule says otherwise, so everything starts at `ask`, and the
       # plugin reviews each ask before it reaches a prompt: fixed checks first
       # (dangerous shell commands denied, common read-only ones allowed), then
-      # the session's own model with the conversation as context. Anything it
+      # the reviewers above with the conversation as context. Anything they
       # can't decide, or any failure, stays a prompt.
       #
       # opencode has no model-checked mode of its own yet
@@ -179,6 +212,14 @@ in
           };
         }
 
+        # This must load before the memory plugin: pull before its catch-up and
+        # recall, then push completed memory writes, including its hidden forks.
+        # The existing encrypted backend and wt handoff/restore remain unchanged.
+        {
+          package = "${syncPlugin}";
+          options.command = lib.getExe pkgs.claude-sync;
+        }
+
         # Claude Code's memory, shared: opencode reads and writes the same
         # ~/.claude/projects/<project>/memory/ folder, in the same format, so
         # either tool picks up what the other saved. It recalls relevant
@@ -195,7 +236,17 @@ in
         # than running it without its environment. The V1 plugins
         # (simonwjackson/opencode-direnv and friends) don't load in opencode 2.
         { package = "@madsoftwaredev/opencode-direnv@0.1.2"; }
-      ];
+      ] ++ lib.optional (files ? typesafe-api-key && delegatedModels != [ ]) {
+        package = "${routingPlugin}";
+        options = {
+          apiKeyFile = files.typesafe-api-key;
+          model = "jev-latest";
+          candidates = delegatedModels;
+          fallbackModel = if available ? anthropic then "anthropic/claude-opus-5-5" else "openai/gpt-6.1-sol";
+          minConfidence = 0.8;
+          timeoutMs = 5000;
+        };
+      };
     } // lib.optionalAttrs (memoryModels != null) {
       agents = {
         opencode-memory-recall.model = memoryModels.fast;

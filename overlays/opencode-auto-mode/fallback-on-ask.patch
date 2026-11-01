@@ -1,0 +1,102 @@
+diff --git a/src/config.ts b/src/config.ts
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -11,6 +11,8 @@
+    * precedence over apiKeyEnv.
+    */
+   apiKeyFile?: string;
++  // A stronger reviewer can resolve uncertainty instead of prompting immediately.
++  fallbackOnAsk?: boolean;
+   minConfidence?: number;
+   timeoutMs?: number;
+ };
+@@ -90,4 +92,5 @@
+ function decision(value: Record<string, unknown>): value is DecisionStage {
+-  if (!only(value, ["type", "model", "apiKeyEnv", "apiKeyFile", "minConfidence", "timeoutMs", "endpoint", "policy"])) return false;
++  if (!only(value, ["type", "model", "apiKeyEnv", "apiKeyFile", "fallbackOnAsk", "minConfidence", "timeoutMs", "endpoint", "policy"])) return false;
++  if (value.fallbackOnAsk !== undefined && typeof value.fallbackOnAsk !== "boolean") return false;
+   if (value.policy !== undefined && !policy(value.policy)) return false;
+   if (!model(value.model)) return false;
+diff --git a/src/classifier.ts b/src/classifier.ts
+--- a/src/classifier.ts
++++ b/src/classifier.ts
+@@ -27,6 +27,12 @@
+       if (result.tier === "auto-allow") return { decision: "allow", reason: result.reason, stage: "static" };
+     } else {
+       const result = await review(stage);
++      // Jev's uncertainty should reach the stronger reviewer, not skip it.
++      const next = stages[stages.indexOf(stage) + 1];
++      if (stage.type === "decision" && stage.fallbackOnAsk && result.decision === "ask" && next?.type === "llm") {
++        abstained = result.reason;
++        continue;
++      }
+       if (result.decision === "abstain") { abstained = result.reason; continue; }
+       return { decision: result.decision, reason: result.reason, stage: result.stage ?? stage.type };
+     }
+diff --git a/src/fallback-on-ask.test.ts b/src/fallback-on-ask.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/fallback-on-ask.test.ts
+@@ -0,0 +1,62 @@
++import { describe, it } from "node:test";
++import assert from "node:assert/strict";
++import { compositeDecision } from "./classifier.js";
++import { parseOptions, type ClassifierStage } from "./config.js";
++
++const request = { action: "shell", resources: ["touch file"] };
++const decision = { type: "decision" as const, model: "typesafe-ai/jev-latest", fallbackOnAsk: true };
++const stages: ClassifierStage[] = [decision, { type: "llm" }];
++
++describe("decision-stage ask fallback", () => {
++  it("validates the opt-in flag", () => {
++    for (const fallbackOnAsk of [true, false])
++      assert.doesNotThrow(() => parseOptions({ classifiers: [{ ...decision, fallbackOnAsk }] }));
++    for (const fallbackOnAsk of [null, "true", 1])
++      assert.throws(() => parseOptions({ classifiers: [{ ...decision, fallbackOnAsk }] }));
++  });
++  it("lets the following LLM settle an uncertain decision", async () => {
++    const seen: string[] = [];
++    const result = await compositeDecision(stages, request, async (stage) => {
++      seen.push(stage.type);
++      return stage.type === "decision"
++        ? { decision: "ask", reason: "uncertain" }
++        : { decision: "allow", reason: "authorized" };
++    });
++    assert.equal(result.decision, "allow");
++    assert.equal(result.stage, "llm");
++    assert.deepEqual(seen, ["decision", "llm"]);
++  });
++  it("preserves explicit allows and denies", async () => {
++    for (const outcome of ["allow", "deny"] as const) {
++      const seen: string[] = [];
++      const result = await compositeDecision(stages, request, async (stage) => {
++        seen.push(stage.type);
++        return { decision: outcome, reason: "confident" };
++      });
++      assert.equal(result.decision, outcome);
++      assert.deepEqual(seen, ["decision"]);
++    }
++  });
++  it("still asks when the LLM asks or abstains", async () => {
++    for (const outcome of ["ask", "abstain"] as const) {
++      const result = await compositeDecision(stages, request, async (stage) => ({
++        decision: stage.type === "decision" ? "ask" : outcome,
++        reason: "uncertain",
++      }));
++      assert.equal(result.decision, "ask");
++    }
++  });
++  it("does not bypass a human without a following LLM", async () => {
++    for (const classifiers of [[decision], [decision, { type: "static" as const }]]) {
++      const result = await compositeDecision(classifiers, request, async () => ({ decision: "ask", reason: "uncertain" }));
++      assert.equal(result.decision, "ask");
++      assert.equal(result.stage, "decision");
++    }
++  });
++  it("preserves static safety denials before reviewers", async () => {
++    const result = await compositeDecision([{ type: "static" }, ...stages], {
++      action: "shell", resources: ["sudo rm -rf /"],
++    }, async () => { throw new Error("unexpected reviewer"); });
++    assert.equal(result.decision, "deny");
++  });
++});

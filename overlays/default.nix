@@ -177,7 +177,9 @@ in
   # no user message is visible. api-key-file lets a decision stage read its
   # key from a file rather than the environment of opencode's background
   # server, which whichever client starts it first would have to carry. The
-  # plugin's tests are updated to match and pass.
+  # opt-in fallback-on-ask lets Jev's uncertainty reach the following LLM
+  # reviewer instead of immediately prompting, without changing explicit
+  # denials or pipelines that don't opt in. Tests cover these boundaries.
   #
   # Dependencies follow claude-helpers below: a fixed-output derivation from
   # the plugin's bun.lock, one hash per system. It writes
@@ -199,6 +201,7 @@ in
         patches = [
           ./opencode-auto-mode/partial-context-and-shell-review.patch
           ./opencode-auto-mode/api-key-file.patch
+          ./opencode-auto-mode/fallback-on-ask.patch
         ];
       };
 
