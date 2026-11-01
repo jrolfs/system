@@ -35,6 +35,43 @@ let
     KOMODO_JWT_SECRET={{ ${item}/jwt secret }}
     KOMODO_WEBHOOK_SECRET={{ ${item}/webhook secret }}
   '';
+
+  # By item ID: the item's title, " Komodo / API key", starts with a space and
+  # contains slashes, neither of which an op:// reference can spell.
+  apiKeyItem = "op://Secrets/c2plw7g2me47dg5yzwtmq4d5oa";
+
+  # Rendered as a curl header file, so the key and secret reach curl through
+  # `--header @file` instead of its command line.
+  apiKeyHeaders = pkgs.writeText "komodo-api-key.headers.tpl" ''
+    x-api-key: {{ ${apiKeyItem}/username }}
+    x-api-secret: {{ ${apiKeyItem}/credential }}
+  '';
+
+  # References only; the values never enter the store.
+  secretsManifest = pkgs.writeText "komodo-secrets.json" (builtins.toJSON cfg.secrets);
+
+  syncSecrets = pkgs.writeShellApplication {
+    name = "komodo-secrets-sync";
+    runtimeInputs = [ pkgs.curl pkgs.jq config.onepassword.package ];
+    text = builtins.readFile ./sync-secrets.bash;
+  };
+
+  syncEnvironment = {
+    CORE = "http://127.0.0.1:9120";
+    HOST = hostname;
+    MANIFEST = "${secretsManifest}";
+    HEADERS = config.onepassword.templates.komodo-api-key.path;
+    TOKEN_FILE = config.onepassword.tokenFile;
+    OP_CONFIG_DIR = "/var/lib/onepassword/config";
+  };
+
+  syncServiceConfig = {
+    Type = "oneshot";
+    ExecStart = lib.getExe syncSecrets;
+    RuntimeDirectory = "komodo-secrets-sync";
+    RuntimeDirectoryMode = "0700";
+    UMask = "0077";
+  };
 in
 {
   options.komodo = {
@@ -61,6 +98,19 @@ in
           every periphery's version.
         '';
       };
+    };
+
+    secrets = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = { DHCP_PROBE_PUSH_URL = "op://Secrets/dhcp-probe/push url"; };
+      description = ''
+        Komodo secret variables kept in step with 1Password, as variable name
+        to `op://` reference. Read with this host's service account, so only
+        items in the Secrets vault work. A stack uses one through its
+        Environment, `NAME=[[NAME]]`. Komodo's copy is overwritten on every
+        sync, so change the value in 1Password, not in Komodo.
+      '';
     };
 
     periphery = {
@@ -207,6 +257,45 @@ in
       # Leia's periphery dials in to Core here, and Traefik on Leia proxies
       # the UI to it.
       networking.firewall.allowedTCPPorts = [ 9120 ];
+    })
+
+    # Runs at boot, and again on any switch that changes the declared set or
+    # the API key, since either changes this unit. RemainAfterExit is what
+    # makes a switch restart it rather than skip an exited oneshot.
+    (lib.mkIf (coreActive && cfg.secrets != { }) {
+      onepassword.templates.komodo-api-key = {
+        template = apiKeyHeaders;
+        consumers = [ "komodo-secrets-sync" ];
+      };
+
+      systemd.services.komodo-secrets-sync = {
+        description = "Sync Komodo secret variables from 1Password";
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" "docker-komodo-core.service" ];
+        environment = syncEnvironment;
+        serviceConfig = syncServiceConfig // { RemainAfterExit = true; };
+      };
+
+      # A value changed only in 1Password lands within a day without a switch.
+      # A separate unit, since the timer can't restart one that is still
+      # active from RemainAfterExit.
+      systemd.services.komodo-secrets-sync-refresh = {
+        description = "Sync Komodo secret variables from 1Password (daily)";
+        after = [ "network-online.target" "docker-komodo-core.service" "onepassword-render-komodo-api-key.service" ];
+        requires = [ "onepassword-render-komodo-api-key.service" ];
+        environment = syncEnvironment;
+        serviceConfig = syncServiceConfig;
+      };
+
+      systemd.timers.komodo-secrets-sync-refresh = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "daily";
+          RandomizedDelaySec = "1h";
+          Persistent = true;
+        };
+      };
     })
   ];
 }

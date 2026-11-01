@@ -19,7 +19,7 @@
     ../../modules/nixos/desktop
     ../../modules/nixos/arcade
 
-    ../../modules/nixos/services/komodo.nix
+    ../../modules/nixos/services/komodo
     ../../modules/nixos/services/plex.nix
     ../../modules/nixos/services/home-assistant
     ../../modules/nixos/services/agent-vm.nix
@@ -53,6 +53,12 @@
     # Leia's Core was v2.1.2 when its database moved here, and a database
     # only migrates forward; 2.3.3 is also Irulan's periphery, from nixpkgs.
     imageTag = "2.3.3";
+  };
+
+  # Stack secrets, synced from 1Password into Komodo secret variables. A stack
+  # reads one through its Environment as NAME=[[NAME]].
+  komodo.secrets = {
+    DHCP_PROBE_PUSH_URL = "op://Secrets/dhcp-probe/push url";
   };
 
   # Home Assistant and the Matter server, moved here from Leia in phase 4 of
