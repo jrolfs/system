@@ -120,9 +120,22 @@ constraints shape that choice:
   ([komodo#1636](https://github.com/moghtech/komodo/issues/1636), open).
 
 For native services, `onepassword.templates` (`modules/nixos/onepassword-secrets.nix`)
-is already the answer. For stacks, the candidates are Komodo's own secret
-interpolation (`[[NAME]]`) and files rendered on the host by the same
-`onepassword.templates`, read from a fixed path rather than the clone.
+is the answer. **For stacks, it is Komodo secret variables**, decided with
+phase 2's dhcp-probe, the first stack with a secret:
+
+- The value is a Komodo Variable with `is_secret` (Settings → Variables, or
+  the API's `CreateVariable`). Copied from a Leia `*.secrets.env` by piping it
+  straight into the API, it never touches a screen or a file.
+- The stack's **Environment** setting in Komodo passes it on, as
+  `NAME=[[NAME]]`; the compose file reads `${NAME}`. Komodo interpolates
+  `[[...]]` only in that setting (and in UI-defined compose contents), never
+  in compose files cloned from git: there the placeholder arrives literally.
+- Komodo knows the value is secret, so its Update logs show `<NAME>` where
+  `docker compose config` would print it, unlike an `env_file`. Checked after
+  phase 2's deploy: the log holds no token.
+- The value then lives in Core's database, not in 1Password. Fine for
+  low-stakes tokens like a push URL; anything that matters gets a 1Password
+  item too, kept in step by hand until there's a reason to automate it.
 
 ## Inventory
 
@@ -225,27 +238,39 @@ Rollback: `komodo.periphery.enable = false` and drop `plex.nix` from
 Irulan's imports, revert the `servers.yml` commit, delete the `irulan` server
 in Komodo. Leia is untouched throughout.
 
-### Phase 2: monitoring
+### Phase 2: monitoring (done 2026-11-01)
 
-Uptime Kuma and dhcp-probe, as the stack `irulan-monitoring` at
-`irulan/monitoring/compose.yaml`.
+Uptime Kuma and dhcp-probe run as the Komodo stack `irulan-monitoring` on
+server `irulan`, from rolfs.lan's `irulan/monitoring/compose.yaml` on `main`.
+Monitoring was down about six minutes (00:52 to 00:58).
 
-Why second: it is the first real Komodo stack on Irulan, so it is where the
-repo layout, server assignment and cross-host routing get exercised, and
-very little depends on it. Monitoring also belongs off the NAS: Kuma on Leia
-cannot report Leia being down.
+What changed:
 
-- **State**: copy Kuma's data directory with Kuma stopped. It is SQLite.
-- **Changes**: Kuma's Docker-container monitors read Leia's socket and can't
-  from Irulan. Replace them with HTTP or TCP monitors. dhcp-probe pushes to
-  Kuma by stack name today, so its push URL becomes Kuma's Traefik name.
-  dhcp-probe needs a macvlan network on Irulan, with the pinned MAC, for its
-  DHCP exchange to reach kath.
-- **Secrets**: `dhcp-probe.secrets.env`. Kuma's notification credentials are
-  in its database and move with it.
-- **DNS/Traefik**: `status.rolfs.*` moves from Docker labels to a
-  `servers.yml` entry pointing at Irulan.
-- **Rollback**: stop the stack, start Kuma and dhcp-probe on Leia again.
+- **Kuma's data** is at `/srv/monitoring/uptime-kuma` on Irulan, outside the
+  periphery's clone (created by `hosts/irulan`), copied with Kuma stopped.
+  Its port 3001 is published, and Leia's Traefik routes `status.rolfs.*` to
+  `irulan.rolfs.lan:3001` from `servers.yml`. Docker-published ports bypass
+  NixOS's input firewall, so no firewall rule was needed.
+- **dhcp-probe** keeps its pinned MAC `02:42:0a:0a:0a:63` and `10.10.10.99`
+  reservation on a macvlan network on `enp3s0` (gateway kath), and pushes to
+  Kuma by name over the stack's bridge. Its push URL is the first stack secret
+  (see "Secrets").
+- **Kuma's monitors** needed one change: none used Leia's Docker socket, but
+  Matter's pointed at `leia.rolfs.lan:5580`. It now checks `irulan-host:5580`,
+  Irulan itself through `host-gateway`. The Matter server's port is open only
+  to the stack's bridge, which the compose file names `br-monitoring`
+  (`networking.firewall.interfaces.br-monitoring` in `hosts/irulan`), since
+  its API is unauthenticated.
+- **Leia**: both services left `leia/docker/docker-compose.yml`, and their
+  containers are stopped with `restart=no`, data kept, as the rollback.
+- **The repo resource's webhook doesn't fire.** GitHub can't reach
+  `komodo.rolfs.casa`, which only answers on the LAN, so a push to rolfs.lan
+  reaches Leia's clone (and Traefik's routes) only on a Pull of the
+  `rolfs.lan` repo in Komodo. Every routing change in later phases needs one.
+
+Rollback: stop the stack, revert the `servers.yml` route, pull the repo, and
+start Leia's `uptime-kuma` and `dhcp-probe` with `restart=always` (stop the
+Irulan stack first: dhcp-probe's MAC and address can't be up twice).
 
 ### Phase 3: Plex cutover
 
