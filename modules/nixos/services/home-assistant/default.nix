@@ -175,6 +175,8 @@ in
       # closed to the LAN.
       # Camera streaming for Home Assistant, on localhost only: nothing but Home
       # Assistant talks to it, and go2rtc's API has no authentication.
+      systemd.services.home-assistant.environment.PYWEMO_HTTP_SERVER_PORT = "8989";
+
       services.go2rtc = {
         enable = true;
         settings = {
@@ -194,7 +196,10 @@ in
       };
 
       networking.firewall = {
-        allowedTCPPorts = [ 8123 ];
+        # 8989: pywemo's callback server, where Wemo devices push their state.
+        # Pinned below, since by default pywemo takes the first free port from
+        # 8989 upward and the firewall needs to know which.
+        allowedTCPPorts = [ 8123 8989 ];
         allowedTCPPortRanges = [ homekitPorts ];
 
         # mDNS, which HomeKit, Apple TV, Lutron, Matter and the zeroconf
@@ -247,6 +252,12 @@ in
           prefixLength = 24;
         }
       ];
+
+      # network-addresses-enp3s0 is only wanted by network-setup, which a
+      # switch doesn't restart, so turning this on with nix-switch left .2
+      # unassigned until the next boot. Wanting it from multi-user.target
+      # makes a switch start it.
+      systemd.services.network-addresses-enp3s0.wantedBy = [ "multi-user.target" ];
     })
   ]);
 }

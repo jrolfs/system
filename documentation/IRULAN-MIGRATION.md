@@ -352,7 +352,7 @@ to load; the package build is what guarantees their dependencies are present.
 Home Assistant is down from step 2 to step 8, about as long as the copy takes.
 
 1. **Pin the versions.** On Leia, read both
-   (`D=/share/MD0_DATA/.qpkg/container-station/bin/docker`;
+   (`D=/share/MD0_DATA/.qpkg/container-station/usr/bin/docker`;
    `$D inspect home-assistant --format '{{index .Config.Labels "org.opencontainers.image.version"}}'`,
    `$D exec matter pip show python-matter-server`) and confirm Irulan's are
    the same or newer: `nix eval --raw .#nixosConfigurations.irulan.config.services.home-assistant.package.version`.
