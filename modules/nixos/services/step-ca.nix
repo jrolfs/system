@@ -15,7 +15,7 @@
 # with desktop-app 1Password rather than here: a short-form reference
 # resolves against the Private vault, and a host authenticating with a
 # service account cannot read Private at all. Either copy it across, or
-# render it from the Secrets vault with onepassword.templates.
+# give this a sops-nix secret the way komodo.nix plans to.
 
 {
   services.step-ca = {

@@ -56,14 +56,7 @@ export GIT_DUET_CO_AUTHORED_BY=1
 export GIT_DUET_AUTHORS_FILE="${XDG_CONFIG_HOME}/git/authors.yml"
 
 # GPG/SSH
-#
-# Except in an SSH session that forwarded an agent: that socket leads back to
-# the machine you connected from, whose agent holds the unlocked key, and it's
-# what sudo authenticates with (modules/nixos/sudo.nix). Replacing it with this
-# machine's own agent made every sudo over SSH fall back to the password.
-if [[ -z $SSH_CONNECTION || ! -S $SSH_AUTH_SOCK ]]; then
-  export SSH_AUTH_SOCK="${HOME}/.gnupg/S.gpg-agent.ssh"
-fi
+export SSH_AUTH_SOCK="${HOME}/.gnupg/S.gpg-agent.ssh"
 
 # FZF
 export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -g ""'
@@ -83,10 +76,11 @@ export NIXPKGS_ALLOW_UNFREE=1
 
 export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 
-# Claude Code. Which account it bills is up to modules/home/shared/claude-accounts.nix.
+# Claude Code
+export CLAUDE_CODE_USE_FOUNDRY=1
 export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5
 export ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-4-5
-export ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-5-5[1m]
+export ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-5[1m]
 export ANTHROPIC_DEFAULT_FABLE_MODEL=claude-fable-5[1m]
 export ANTHROPIC_MODEL=$ANTHROPIC_DEFAULT_OPUS_MODEL
 

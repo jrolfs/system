@@ -24,11 +24,8 @@ zinit ice pick"init.zsh" \
   atpull"cd contrib && git pull"
 zinit light sorin-ionescu/prezto
 
-# Local configs. Sourced directly: `zinit snippet` copies a local file into its
-# cache on first load and keeps sourcing the copy, so edits here never took
-# effect, and a machine whose first shell predated the castle unlock kept
-# sourcing the encrypted keys.zsh.
-for config in $XDG_CONFIG_HOME/zsh/init/(^_*).zsh; source "$config"
+# Local configs
+for config in $XDG_CONFIG_HOME/zsh/init/(^_*).zsh; zinit snippet "$config"
 
 # Post-Prezto hooks (order-sensitive — must load after Prezto's editor module)
 zinit ice atload'
@@ -68,11 +65,10 @@ zinit wait lucid for \
 zinit ice wait lucid pick"completions"
 zinit light andsens/homeshick
 
-# macOS only: launchctl doesn't exist elsewhere, and this is a bash script.
-# Its `complete` calls only work where zsh's bash-completion emulation is on,
-# which nix-darwin enables system-wide and NixOS doesn't, so on Linux it
-# printed "command not found: complete" in every new shell.
-zinit ice wait lucid pick"launchctl-completion.bash" if'[[ $OSTYPE == darwin* ]]'
+zinit ice wait lucid pick"completions/zsh"
+zinit light homebrew/brew
+
+zinit ice wait lucid pick"launchctl-completion.bash"
 zinit light bobthecow/launchctl-completion
 
 # Kubectx
@@ -81,23 +77,13 @@ zinit light ahmetb/kubectx
 
 # Initialize completions after Turbo-loaded plugins register theirs.
 #
-# `wt`'s and pnpm's completions are registered here rather than beside their
-# shell init because zinit only substitutes its compdef-queueing shim while a
-# plugin file is being sourced, and restores (or unfunctions) it immediately
-# after. An `atload` therefore runs with no compdef at all, so calling it there
-# is a "command not found" and the binding is silently lost. Running it after
-# zicdreplay also lets these wrappers win over anything wt queued itself, or
-# the `_pnpm` that pnpm-shell-completion installs into $fpath.
-#
-# `n` is bound explicitly because zsh resolves completions by the literal
-# command word: _normal never expands an alias, so `n` inherits nothing from
-# pnpm's binding.
-zinit ice wait lucid atload'
-  zicompinit
-  zicdreplay
-  (( $+functions[_wt_with_restore] )) && compdef _wt_with_restore wt
-  (( $+functions[_pnpm_with_scripts] )) && compdef _pnpm_with_scripts pnpm n
-'
+# `wt`'s completion is registered here rather than beside its shell init
+# because zinit only substitutes its compdef-queueing shim while a plugin file
+# is being sourced, and restores (or unfunctions) it immediately after. An
+# `atload` therefore runs with no compdef at all, so calling it there is a
+# "command not found" and the binding is silently lost. Running it after
+# zicdreplay also lets this wrapper win over anything wt queued itself.
+zinit ice wait lucid atload'zicompinit; zicdreplay; (( $+functions[_wt_with_restore] )) && compdef _wt_with_restore wt'
 zinit light zdharma-continuum/null
 
 #
