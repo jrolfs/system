@@ -233,6 +233,15 @@ in
         # are commissioned into was created with that. extraArgs is applied
         # after the module's own arguments, so this one wins.
         extraArgs.vendorid = "65521";
+
+        # One certificate the server downloads at startup has a NULL
+        # signature parameter, which the cryptography in nixpkgs refuses to
+        # parse. The server doesn't catch that, so the download aborted its
+        # whole startup. The patch skips that certificate. The Docker image
+        # doesn't hit this because its older cryptography only warns.
+        package = pkgs.python-matter-server.overridePythonAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./matter-server-skip-unparsable-paa.patch ];
+        });
       };
 
       # The server runs the provider by name, so it only has to be on PATH.
