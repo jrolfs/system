@@ -1,0 +1,6 @@
+singleton Auth 1.0 Auth.qml
+singleton Colors 1.0 Colors.qml
+singleton Settings 1.0 Settings.qml
+Greeter 1.0 Greeter.qml
+Icon 1.0 Icon.qml
+PowerButton 1.0 PowerButton.qml

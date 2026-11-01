@@ -89,13 +89,13 @@ in
       { name = "Developer"; path = "${home}/Developer"; }
       { name = "Documents"; path = "${home}/Documents"; }
       { name = "Pictures"; path = "${home}/Pictures"; }
-      { name = "Images"; path = "${home}/Images"; }
-      { name = "Sync"; path = "${home}/Sync"; }
       { name = "Applications"; path = "/Applications"; }
       { name = "Desktop"; path = "${home}/Desktop"; }
       { name = "Screenshots"; path = "${home}/Images/Screenshots"; }
       { name = "Downloads"; path = "${home}/Downloads"; }
       { name = userName; path = home; }
+      { name = "Images"; path = "${home}/Images"; }
+      { name = "Sync"; path = "${home}/Sync"; }
     ];
 
     environment.systemPackages = [ pkgs.mysides ];

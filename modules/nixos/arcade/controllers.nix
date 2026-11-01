@@ -16,17 +16,8 @@
 # works in both with no per-device configuration.
 
 lib.mkIf config.arcade.enable {
-  hardware.bluetooth = {
-    enable = true;
-    powerOnBoot = true;
-    settings.General = {
-      # Battery levels over Bluetooth (the DualSense reports its own).
-      Experimental = true;
-      # Reconnects in a couple of seconds after the PS button is pressed,
-      # rather than waiting for the next scan.
-      FastConnectable = true;
-    };
-  };
+  # Its settings, fast reconnection included, are modules/nixos/bluetooth.nix.
+  hardware.bluetooth.enable = true;
 
   services.udev.packages = [ pkgs.game-devices-udev-rules ];
 

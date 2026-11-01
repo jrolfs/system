@@ -19,9 +19,10 @@
     ../../modules/nixos/desktop
     ../../modules/nixos/arcade
 
-    ../../modules/nixos/services/home-assistant.nix
     ../../modules/nixos/services/komodo.nix
     ../../modules/nixos/services/plex.nix
+    ../../modules/nixos/services/home-assistant
+    ../../modules/nixos/services/agent-vm.nix
 
     # Needs state that still lives on Leia and is placed by hand before first
     # start (the CA data and its intermediate password). Imported without it,
@@ -38,6 +39,31 @@
   komodo.core = {
     enable = true;
     activate = false;
+    # Leia's Core was v2.1.2 when its database moved here, and a database
+    # only migrates forward; 2.3.3 is also Irulan's periphery, from nixpkgs.
+    imageTag = "2.3.3";
+  };
+
+  # Home Assistant and the Matter server, moved here from Leia in phase 4 of
+  # documentation/IRULAN-MIGRATION.md. serveLegacyAddress gives Irulan
+  # 10.10.10.2, Home Assistant's address on Leia, so devices, the companion
+  # apps and Traefik's route find it where they always have. Leia's containers
+  # are stopped with their restart policy off, and must stay that way while
+  # this is on, or the two would fight over the address.
+  homeAssistant = {
+    enable = true;
+    serveLegacyAddress = true;
+  };
+
+  # A microVM running opencode's server, for agents to work in without the
+  # rest of this machine in reach.
+  agentVm = {
+    enable = true;
+    externalInterface = "enp3s0";
+    telegramBot = {
+      enable = true;
+      allowedUserId = 6908664565;
+    };
   };
 
   # Attached to a TV with a keyboard and trackpad, so it boots to a desktop
@@ -45,7 +71,17 @@
   # beside it (documentation/ARCADE.md).
   desktop.enable = true;
   keyboard.enable = true;
+  # The Magic Keyboard and Trackpad pair over it, and have to work at the
+  # console as well as in the desktop.
+  hardware.bluetooth.enable = true;
   arcade.enable = true;
+
+  # The TV (and the receiver behind it) on and off with the machine, through
+  # Home Assistant's control of the Frame, since this HDMI port has no CEC.
+  av = {
+    enable = true;
+    entity = "media_player.living_room_living_room_smart";
+  };
 
   # Boots to the text console until the desktop's first-boot crash is fixed.
   # The `desktop` and `station` commands still start either one by hand.

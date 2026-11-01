@@ -23,6 +23,7 @@
     ./login-items.nix
     ./startup.nix
     ./mas.nix
+    ./menu-bar.nix
     ./power.nix
     ./screen-sharing.nix
     ./sidecar.nix

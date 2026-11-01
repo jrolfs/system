@@ -16,9 +16,8 @@
 # so provisioning a machine needs no repo edit when the bucket changes.
 #
 # Sync automation is claude-sync's own Claude Code hooks (SessionStart pulls,
-# Stop pushes): `claude-sync auto enable` writes them into ~/.claude/
-# settings.json, which stays under dotfile management rather than being
-# mutated here.
+# Stop pushes), declared in claude-code.nix rather than written by
+# `claude-sync auto enable`.
 
 let
   item = "op://Secrets/Claude Sync";

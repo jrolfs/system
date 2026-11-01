@@ -56,9 +56,11 @@ lib.mkIf config.desktop.enable {
 
     nerd-fonts.fira-code
     nerd-fonts.hack
+    # Its Propo family is also the shell's glyph face.
     nerd-fonts.jetbrains-mono
 
-    # The bar's icons, drawn as text in this face.
-    (callPackage ./phosphor-icons.nix { })
+    # The shell's Settings window draws its icons as text in Material Symbols
+    # Rounded.
+    material-symbols
   ];
 }
