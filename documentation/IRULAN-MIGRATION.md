@@ -518,25 +518,25 @@ What to know:
   network. A shared LAN network created by the system repo, which every stack
   joins, would decouple the two stacks; worth doing before a third stack needs
   a LAN address.
-- **Irulan's Pi-hole carries no secret.** Its web password is the hash in the
-  `pihole.toml` copied from Leia. Leia's still reads `WEBPASSWORD` from its
-  gitignored `pihole.secrets.env`, recreated with Leia's own `docker compose`
-  rather than a Komodo deploy, so the value never reached Komodo's logs.
-- **nebula-sync is in the stack but not running.** It needs the web password
-  in plain text, and creating its 1Password item was refused by the agent's
-  permission classifier. To enable it:
-  1. Create 1Password item `pihole` in **Secrets** with a concealed field
-     `password` holding the Pi-hole web password (the value in Leia's
-     `pihole.secrets.env`; both Pi-holes share it).
-  2. Add `PIHOLE_WEBPASSWORD = "op://Secrets/pihole/password";` to
-     `komodo.secrets` in `hosts/irulan/default.nix` and switch Irulan.
-     (Not before step 1: a reference to a missing item fails the whole sync,
-     dhcp-probe's secret included.)
-  3. In Komodo, set the `irulan-dns` stack's Environment to
-     `PIHOLE_WEBPASSWORD=[[PIHOLE_WEBPASSWORD]]`.
-  4. In `irulan/dns/compose.yaml`, drop nebula-sync's `profiles` line and
-     change both `${PIHOLE_WEBPASSWORD:-}` to `${PIHOLE_WEBPASSWORD:?}`, push,
-     pull the repo in Komodo and deploy the stack. It syncs at :17 each hour.
+- **Neither Pi-hole reads a password file.** Both keep only the web
+  password's hash, in their own `pihole.toml`; `WEBPASSWORD` matters only when
+  setting it. Leia's `pihole.secrets.env` is gone (from Komodo's clone and the
+  old checkout), and the one plaintext copy is 1Password's Secrets / Pi-hole,
+  field `password`, which both Pi-holes share.
+- **nebula-sync runs hourly at :17**, logging in to both with
+  `PIHOLE_WEBPASSWORD`: a `komodo.secrets` entry on Irulan synced from that
+  1Password item, set in the `irulan-dns` stack's Environment as
+  `PIHOLE_WEBPASSWORD=[[PIHOLE_WEBPASSWORD]]`. The compose file reads it as
+  `${PIHOLE_WEBPASSWORD:?}`, so a deploy without it fails rather than running
+  nebula-sync with no password.
+- **Leia's Pi-hole is unfiltered for a minute or two after a restart.** Each
+  sync's settings copy restarts its DNS server, which on the NAS reloads 2.9 GB
+  of query history before the blocklist is back, and after the cutover's
+  recreate it stayed without a blocklist until `pihole reloadlists` (the
+  log said "Database not available" for gravity.db while the file itself was
+  fine). Clients mostly ask `.1`, so this is minor. Shorter query retention on
+  Leia's (`database.maxDBdays`) would shorten it; nebula-sync doesn't touch
+  that setting.
 - **`10.10.10.9` is on enp3s0 by hand until Kea lets it go.** The declined
   leases left `.9` in Kea's decline quarantine (24 hours by default), so dhcpcd
   holds a pool address (`.151`) and `.9` was added manually to keep
