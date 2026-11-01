@@ -217,12 +217,18 @@
   # The version is left to negotiation. QTS offers 4.1 at most, and a pinned
   # nfsvers fails outright against a server without it instead of falling back.
   #
-  # TODO: confirm the export path. QTS exports NFSv4 under a pseudo-root
-  # named after the share (/Media), and v3 at /share/Media. On Leia,
-  # `cat /etc/exports` shows both, and Control Panel → Shared Folders →
-  # Media → Edit Shared Folder Permission → NFS host access is where Irulan
-  # has to be allowed (read-only is enough).
-  fileSystems."/mnt/nas/media" = {
+  # The export is /Media under QTS's NFSv4 pseudo-root. Leia only grants it to
+  # irulan.rolfs.lan, so Irulan's LAN traffic has to come from its own address
+  # (the reason Home Assistant's 10.10.10.2 is a /32).
+  #
+  # Mounted again at the two paths Leia's Plex library recorded its media
+  # under, so the moved database resolves every file without its paths being
+  # rewritten. QTS reached the same share both ways.
+  fileSystems = lib.genAttrs [
+    "/mnt/nas/media"
+    "/share/Media"
+    "/share/MD0_DATA/Media"
+  ] (_: {
     device = "leia.rolfs.lan:/Media";
     fsType = "nfs";
     options = [
@@ -232,7 +238,7 @@
       "ro"
       "soft"
     ];
-  };
+  });
 
   # `/` and `/boot` come from disko.nix — it owns the partition table and
   # generates the matching fileSystems entries, so the placeholders that used
