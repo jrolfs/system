@@ -238,6 +238,19 @@ in
       # The server runs the provider by name, so it only has to be on PATH.
       systemd.services.matter-server.path = [ chip-ota-provider-app ];
 
+      # The server downloads the certificate authorities it checks devices
+      # against at startup, then skips the download for a day, and it records
+      # the download even when it fetched nothing. Its first start here was
+      # during the cutover, with no DNS, and left the store empty, which fails
+      # every pairing, including the one with its own OTA provider. Forgetting
+      # the record whenever the store is empty makes the next start try again.
+      systemd.services.matter-server.preStart = ''
+        certs="$CACHE_DIRECTORY/certs"
+        if [ -e "$certs/.version" ] && [ -z "$(find "$certs" -mindepth 1 ! -name .version -print -quit)" ]; then
+          rm "$certs/.version"
+        fi
+      '';
+
       networking.firewall = {
         # 8989: pywemo's callback server, where Wemo devices push their state.
         # Pinned above, since by default pywemo takes the first free port from
