@@ -40,13 +40,37 @@
   # The irulan-monitoring Komodo stack (rolfs.lan's irulan/monitoring), phase 2
   # of documentation/IRULAN-MIGRATION.md. Kuma's database lives here rather
   # than in the periphery's clone, so redeploys never touch it.
-  systemd.tmpfiles.rules = [ "d /srv/monitoring/uptime-kuma 0750 root root - -" ];
+  systemd.tmpfiles.rules = [
+    "d /srv/monitoring/uptime-kuma 0750 root root - -"
+    # The irulan-dns stack's Pi-hole (phase 5): gravity and the query log,
+    # outside the periphery's clone for the same reason as Kuma's.
+    "d /srv/dns/pihole 0755 root root - -"
+  ];
 
   # Kuma's Matter monitor reaches the Matter server on this host from the
   # stack's bridge, which the compose file names br-monitoring. Only that
   # network gets the port: the Matter server's API is unauthenticated, so it
   # isn't opened to the LAN.
   networking.firewall.interfaces.br-monitoring.allowedTCPPorts = [ 5580 ];
+
+  # The primary Pi-hole is a macvlan container on this host at 10.10.10.1, and
+  # the kernel never delivers traffic between a macvlan endpoint and its parent
+  # interface. Without this the host, and Home Assistant on its network, would
+  # time out on the first DNS server DHCP hands out before falling back. A
+  # second macvlan on enp3s0, with one address and a route to .1 only, gives
+  # the host a path to its own Pi-hole; nothing else is routed through it.
+  # 10.10.10.4 is recorded in rolfs.lan's kath/network.md.
+  networking.macvlans.lan-shim = {
+    interface = "enp3s0";
+    mode = "bridge";
+  };
+  networking.interfaces.lan-shim = {
+    # Explicit, so dhcpcd leaves it alone and a future change to enp3s0's
+    # DHCP setting can't spill onto it.
+    useDHCP = false;
+    ipv4.addresses = [ { address = "10.10.10.4"; prefixLength = 32; } ];
+    ipv4.routes = [ { address = "10.10.10.1"; prefixLength = 32; } ];
+  };
   komodo.core = {
     enable = true;
     activate = true;
