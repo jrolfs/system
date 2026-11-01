@@ -75,9 +75,22 @@
   # a second on-link route for the LAN's IPv6 prefix could send Matter's local
   # traffic out of the shim. Set as the interface appears, since a boot-time
   # sysctl runs before it exists.
+  #
+  # And answering ARP only for its own address. By default Linux answers on
+  # any interface for any address the host holds, so the shim replied to
+  # dhcpcd's duplicate-address probes for enp3s0's lease with its own MAC;
+  # dhcpcd took that as a conflict, declined each lease in turn and left
+  # enp3s0 without 10.10.10.9.
   systemd.services.lan-shim-netdev.postStart = ''
     echo 1 > /proc/sys/net/ipv6/conf/lan-shim/disable_ipv6
+    echo 1 > /proc/sys/net/ipv4/conf/lan-shim/arp_ignore
+    echo 2 > /proc/sys/net/ipv4/conf/lan-shim/arp_announce
   '';
+
+  # Docker's veth and bridge interfaces aren't dhcpcd's. Unlisted, it probed
+  # them for link-local addresses and, while enp3s0 was between leases,
+  # routed the default route through one.
+  networking.dhcpcd.denyInterfaces = [ "veth*" "br-*" "docker*" ];
   komodo.core = {
     enable = true;
     activate = true;
