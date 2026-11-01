@@ -51,7 +51,7 @@ hostname**: Leia's connects as `leia`, and Irulan's as `irulan`.
 
 - **Both peripheries dial out, straight to Core.** Irulan's is
   `services.komodo-periphery` (the nixpkgs module, through
-  `komodo.periphery.enable` in `modules/nixos/services/komodo.nix`), connecting
+  `komodo.periphery.enable` in `modules/nixos/services/komodo`), connecting
   to the Core beside it at `ws://127.0.0.1:9120`. Leia's connects to
   `ws://irulan.rolfs.lan:9120`. Neither goes through Traefik, so either host
   stays manageable while Traefik is down. Irulan opens 9120 for Leia's
@@ -123,9 +123,18 @@ For native services, `onepassword.templates` (`modules/nixos/onepassword-secrets
 is the answer. **For stacks, it is Komodo secret variables**, decided with
 phase 2's dhcp-probe, the first stack with a secret:
 
-- The value is a Komodo Variable with `is_secret` (Settings → Variables, or
-  the API's `CreateVariable`). Copied from a Leia `*.secrets.env` by piping it
-  straight into the API, it never touches a screen or a file.
+- 1Password is the source of truth. Each stack secret is an item in the
+  **Secrets** vault, and `komodo.secrets` in `hosts/irulan/default.nix` maps a
+  Komodo variable name to its `op://` reference. `komodo-secrets-sync`
+  (`modules/nixos/services/komodo/`) reads each one with Irulan's service
+  account and creates or updates the matching Komodo variable, with
+  `is_secret` set, through Core's API. It runs at boot, on any switch that
+  changes the declared set, and daily from `komodo-secrets-sync-refresh.timer`.
+  Every value is read before anything is written, so if 1Password or Core is
+  unreachable the unit fails and Komodo keeps what it had; a variable is never
+  blanked. The journal shows names and created, updated or unchanged, never
+  values. Komodo's copy is managed: an edit made in Komodo's UI is overwritten
+  by the next sync. Undeclared secret variables are left alone and listed.
 - The stack's **Environment** setting in Komodo passes it on, as
   `NAME=[[NAME]]`; the compose file reads `${NAME}`. Komodo interpolates
   `[[...]]` only in that setting (and in UI-defined compose contents), never
@@ -133,9 +142,22 @@ phase 2's dhcp-probe, the first stack with a secret:
 - Komodo knows the value is secret, so its Update logs show `<NAME>` where
   `docker compose config` would print it, unlike an `env_file`. Checked after
   phase 2's deploy: the log holds no token.
-- The value then lives in Core's database, not in 1Password. Fine for
-  low-stakes tokens like a push URL; anything that matters gets a 1Password
-  item too, kept in step by hand until there's a reason to automate it.
+
+Adding a secret for a stack:
+
+1. Create an item in the **Secrets** vault (Irulan's service account can't
+   read Private).
+2. Add one line to `komodo.secrets`, such as
+   `DHCP_PROBE_PUSH_URL = "op://Secrets/dhcp-probe/push url";`, and switch
+   Irulan. `journalctl -u komodo-secrets-sync` shows it created.
+3. Add `NAME=[[NAME]]` to the stack's Environment in Komodo and `${NAME}` to
+   its compose file, then deploy the stack.
+
+Rotating one: change it at its source (a new Kuma push token, a new database
+password), save the new value in 1Password, then either switch Irulan or wait
+for the daily refresh, and redeploy the stack. The redeploy is what hands the
+new value to the container. 1Password itself doesn't rotate anything; it only
+holds the value and flags old ones in Watchtower.
 
 ## Inventory
 
