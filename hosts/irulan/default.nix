@@ -71,6 +71,13 @@
     ipv4.addresses = [ { address = "10.10.10.4"; prefixLength = 32; } ];
     ipv4.routes = [ { address = "10.10.10.1"; prefixLength = 32; } ];
   };
+  # IPv4 only. Left alone it takes router advertisements like enp3s0 does, and
+  # a second on-link route for the LAN's IPv6 prefix could send Matter's local
+  # traffic out of the shim. Set as the interface appears, since a boot-time
+  # sysctl runs before it exists.
+  systemd.services.lan-shim-netdev.postStart = ''
+    echo 1 > /proc/sys/net/ipv6/conf/lan-shim/disable_ipv6
+  '';
   komodo.core = {
     enable = true;
     activate = true;
