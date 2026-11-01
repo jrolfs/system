@@ -103,6 +103,8 @@
   # reads one through its Environment as NAME=[[NAME]].
   komodo.secrets = {
     DHCP_PROBE_PUSH_URL = "op://Secrets/dhcp-probe/push url";
+    # nebula-sync logs in to both Pi-holes with it (irulan-dns).
+    PIHOLE_WEBPASSWORD = "op://Secrets/Pi-hole/password";
   };
 
   # Home Assistant and the Matter server, moved here from Leia in phase 4 of
