@@ -22,6 +22,26 @@ let
 
   custom = pkgs.callPackage ./custom-components.nix { };
 
+  # The Matter server starts its OTA provider with --secured-device-port 0, so
+  # the provider listens on a random port, and the device being updated
+  # connects to it there, which the firewall refuses. The wrapper pins that
+  # port so the firewall can open it. Two updates run at once would both want
+  # it, and the second fails until the first is done.
+  otaProviderPort = 5541;
+  chip-ota-provider-app = pkgs.writeShellScriptBin "chip-ota-provider-app" ''
+    args=()
+    while (( $# )); do
+      if [[ $1 == --secured-device-port ]]; then
+        args+=("$1" ${toString otaProviderPort})
+        shift 2
+      else
+        args+=("$1")
+        shift
+      fi
+    done
+    exec ${lib.getExe (pkgs.callPackage ./chip-ota-provider-app.nix { })} "''${args[@]}"
+  '';
+
   # The Traefiks in front of Home Assistant, which send X-Forwarded-For:
   # Leia's for rolfs.casa and rolfs.lan, and Irulan's own (irulan-edge, on the
   # host network) for rolfs.dev and rolfs.home, which connects from localhost.
@@ -215,6 +235,9 @@ in
         extraArgs.vendorid = "65521";
       };
 
+      # The server runs the provider by name, so it only has to be on PATH.
+      systemd.services.matter-server.path = [ chip-ota-provider-app ];
+
       networking.firewall = {
         # 8989: pywemo's callback server, where Wemo devices push their state.
         # Pinned above, since by default pywemo takes the first free port from
@@ -223,8 +246,8 @@ in
         allowedTCPPortRanges = [ homekitPorts ];
 
         # mDNS, which HomeKit, Apple TV, Lutron, Matter and the zeroconf
-        # discoveries all run on.
-        allowedUDPPorts = [ 5353 ];
+        # discoveries all run on, and the Matter OTA provider.
+        allowedUDPPorts = [ 5353 otaProviderPort ];
 
         # Replies to SSDP searches (upnp, dlna_dmr, discovery) come back
         # unicast from port 1900 to whatever port the search left from, and
