@@ -25,6 +25,12 @@ let
   # The Traefiks in front of Home Assistant, which send X-Forwarded-For:
   # Leia's for rolfs.casa and rolfs.lan, and Irulan's own (irulan-edge, on the
   # host network) for rolfs.dev and rolfs.home, which connects from localhost.
+  #
+  # Only a fresh install reads these. Home Assistant moves the http block into
+  # .storage/http once ("yaml_migration_done", carried over from Leia) and
+  # ignores the YAML after that, so a change here also has to be made there,
+  # with Home Assistant stopped since it rewrites .storage on shutdown. The
+  # two loopback entries were added to .storage/http by hand on 2026-11-01.
   trustedProxies = [ "10.10.10.12" "127.0.0.1" "::1" ];
 
   # One port per HomeKit Bridge entry. Fourteen are in use, from 21064 up;
