@@ -183,6 +183,11 @@ in
       # drives Claude Code's EnterWorktree tool.
       skills = [ "${pkgs.worktrunk}/share/skills/worktrunk/worktrunk" ];
 
+      commands.resume-claude = {
+        description = "Find a Claude Code thread and continue it in OpenCode";
+        template = builtins.readFile ./opencode-resume-claude.md;
+      };
+
       # Something like Claude Code's auto mode. opencode 2 allows every action
       # unless a rule says otherwise, so everything starts at `ask`, and the
       # plugin reviews each ask before it reaches a prompt: fixed checks first

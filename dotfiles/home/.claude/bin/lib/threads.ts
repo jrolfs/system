@@ -1,5 +1,5 @@
 /**
- * Claude Code threads that Zed's ACP client started, read out of the store.
+ * Claude Code threads, with an optional filter for Zed's ACP client.
  *
  * Zed drives Claude Code non-interactively, so its threads land in the same
  * per-project store as the terminal CLI but with a different fingerprint: the
@@ -33,6 +33,7 @@ const recordSchema = z.looseObject({
   cwd: z.string().optional(),
   operation: z.string().optional(),
   mode: z.string().optional(),
+  isSidechain: z.boolean().optional(),
   customTitle: z.string().optional(),
   aiTitle: z.string().optional(),
   message: z.looseObject({ content: contentSchema.optional() }).optional(),
@@ -40,16 +41,19 @@ const recordSchema = z.looseObject({
 
 type TranscriptRecord = z.infer<typeof recordSchema>;
 
-export interface ZedThread {
+export interface ClaudeThread {
   readonly sessionId: string;
   readonly cwd: string;
   readonly title: string;
+  readonly transcriptPath: string;
   /**
    * Nanoseconds since the epoch, not a Date: transcripts written in the same
    * millisecond are common enough that rounding reorders the list.
    */
   readonly modified: bigint;
 }
+
+export type ZedThread = ClaudeThread;
 
 export type Scope = "here" | "repo" | "all";
 
@@ -148,16 +152,18 @@ export const repoWorktrees = (start: string): readonly string[] => {
   }
 };
 
-const scanStore = (root: string): readonly ZedThread[] =>
+const scanStore = (root: string, zedOnly: boolean): readonly ClaudeThread[] =>
   readdirSync(root)
     .filter((name) => name.endsWith(".jsonl"))
     .flatMap((name) => {
       const path = join(root, name);
       const records = headRecords(path);
-      if (!records.length || !startedByZed(records[0]!)) return [];
+      if (!records.length || (zedOnly && !startedByZed(records[0]!))) return [];
+      if (!zedOnly && !records.some((record) => record.type === "user" && !record.isSidechain)) return [];
       return [
         {
           sessionId: name.replace(/\.jsonl$/, ""),
+          transcriptPath: path,
           cwd: records.find((record) => record.cwd)?.cwd ?? "",
           title: titleOf(records).split(/\s+/).filter(Boolean).join(" "),
           modified: statSync(path, { bigint: true }).mtimeNs,
@@ -165,21 +171,33 @@ const scanStore = (root: string): readonly ZedThread[] =>
       ];
     });
 
-const storesFor = (directory: string, scope: Scope): readonly string[] => {
+const storesFor = (directory: string, scope: Scope, projectsRoot: string): readonly string[] => {
   if (scope === "all") {
-    return readdirSync(PROJECTS_ROOT, { withFileTypes: true })
+    if (!existsSync(projectsRoot)) return [];
+    return readdirSync(projectsRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => join(PROJECTS_ROOT, entry.name));
+      .map((entry) => join(projectsRoot, entry.name));
   }
   const directories = scope === "repo" ? repoWorktrees(directory) : [directory];
-  return directories.map((path) => join(PROJECTS_ROOT, slugFor(path)));
+  return directories.map((path) => join(projectsRoot, slugFor(path)));
 };
 
-/** Zed threads for the requested scope, newest first. */
-export const zedThreads = (directory: string, scope: Scope): readonly ZedThread[] =>
-  storesFor(directory, scope)
+export interface ThreadScanOptions {
+  readonly projectsRoot?: string;
+  readonly zedOnly?: boolean;
+}
+
+/**
+ * Claude Code threads for the requested scope, newest first.
+ */
+export const claudeThreads = (
+  directory: string,
+  scope: Scope,
+  { projectsRoot = PROJECTS_ROOT, zedOnly = false }: ThreadScanOptions = {},
+): readonly ClaudeThread[] =>
+  storesFor(directory, scope, projectsRoot)
     .filter((root) => existsSync(root))
-    .flatMap((root) => scanStore(root))
+    .flatMap((root) => scanStore(root, zedOnly))
     .sort(
       (left, right) =>
         Number(right.modified - left.modified) ||
@@ -187,6 +205,12 @@ export const zedThreads = (directory: string, scope: Scope): readonly ZedThread[
         // stable order rather than whichever the directory listing gave.
         right.sessionId.localeCompare(left.sessionId),
     );
+
+/**
+ * Zed threads for the requested scope, newest first.
+ */
+export const zedThreads = (directory: string, scope: Scope): readonly ZedThread[] =>
+  claudeThreads(directory, scope, { zedOnly: true });
 
 /** The thread's mtime as a date, for formatting. */
 export const momentOf = (thread: ZedThread): Date =>

@@ -37,3 +37,27 @@ resume-zed() {
   [[ -n "$dir" && -d "$dir" ]] && cd "$dir"
   claude --resume "$id"
 }
+
+# OpenCode cannot resume a Claude UUID directly. The helper imports an inert
+# snapshot once, then returns the same OpenCode continuation on later picks.
+resume-claude() {
+  local script=${commands[claude-opencode-threads]}
+  [[ -x "$script" ]] || { print -u2 "resume-claude: missing claude-opencode-threads; run nix-switch"; return 1 }
+
+  local chosen id dir result argument
+  local -a action=(--pick)
+  for argument in "$@"; do
+    case "$argument" in
+      -h|--help) "$script" "$@"; return ;;
+      --import|--import=*) action=() ;;
+    esac
+  done
+  chosen=$("$script" "${action[@]}" "$@")
+  result=$?
+  [[ $result == 130 ]] && return 0
+  (( result == 0 )) || return $result
+  IFS=$'\t' read -r id dir <<<"$chosen"
+  [[ -n "$id" && -n "$dir" ]] || return 0
+
+  opencode "$dir" --session "$id"
+}

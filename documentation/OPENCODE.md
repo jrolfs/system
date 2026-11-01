@@ -20,6 +20,45 @@ options through Home Manager. Supporting plugin sources live beside it under
 Claude commands, agents, and plugins are not automatically interchangeable with
 OpenCode's equivalents. The existing `/resume-zed` command is Claude-specific.
 
+## Continue a Claude conversation
+
+`resume-claude` opens the same Bun/React/Ink picker as `resume-zed`, but includes
+terminal Claude Code threads as well as Zed/ACP threads and continues the
+selection in OpenCode:
+
+```sh
+resume-claude                  # this directory
+resume-claude --repo           # every current git worktree
+resume-claude --all            # all local Claude projects
+resume-claude -d /path/to/repo
+resume-claude --all --import UUID
+resume-claude --all --import UUID --into /new/directory
+```
+
+`claude-opencode-threads` lists threads without importing them. Piped output
+includes exact resume commands. OpenCode's `/resume-claude` command uses that
+listing to help find a thread without loading every transcript into context.
+Run the shell function to open the imported session, since a slash command
+cannot replace the conversation it is running inside.
+
+The helper converts the saved active parent chain into OpenCode V2's session
+transfer format and imports it through `opencode session import`. A saved
+compaction summary replaces the earlier context as it does in Claude. User and
+assistant text retain their roles. Historical tool calls and results become
+text, never pending executable calls. Private thinking, provider signatures,
+images and document attachments are not transferred. Placeholders and import
+warnings make omissions visible. Claude's system records, permissions and
+provider selection are not carried over. OpenCode uses its own configuration.
+No model is run during the import, and the original Claude JSONL is untouched.
+
+Each Claude UUID maps to one stable OpenCode session ID. Picking it again
+resumes that continuation without overwriting OpenCode work or importing later
+Claude changes. Missing working directories require an explicit `--into DIR`.
+The temporary transfer file is private and removed after import. There is no
+direct database access or database sync. The helper is packaged with
+`pkgs.claude-helpers`, so script changes require a switch before using the
+installed command.
+
 ## Memory sync
 
 The Nix-built `opencode-claude-sync` plugin calls the same patched `claude-sync`
