@@ -213,8 +213,11 @@ automation:
         entity_id: media_player.hatch_media_player
         attribute: volume_level
     conditions:
+      # "is number" rather than "is not none": when the Hatch goes unavailable
+      # the attribute isn't None but missing, which passes "is not none" and
+      # then fails the template below.
       - condition: template
-        value_template: "{{ trigger.to_state.attributes.volume_level is not none }}"
+        value_template: "{{ trigger.to_state.attributes.volume_level is number }}"
     actions:
       - action: input_number.set_value
         target:
