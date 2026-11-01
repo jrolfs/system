@@ -22,8 +22,10 @@ let
 
   custom = pkgs.callPackage ./custom-components.nix { };
 
-  # Traefik, which still runs on Leia, sends X-Forwarded-For.
-  traefik = "10.10.10.12";
+  # The Traefiks in front of Home Assistant, which send X-Forwarded-For:
+  # Leia's for rolfs.casa and rolfs.lan, and Irulan's own (irulan-edge, on the
+  # host network) for rolfs.dev and rolfs.home, which connects from localhost.
+  trustedProxies = [ "10.10.10.12" "127.0.0.1" "::1" ];
 
   # One port per HomeKit Bridge entry. Fourteen are in use, from 21064 up;
   # 21063 is the default for the next one created.
@@ -152,7 +154,7 @@ in
 
           http = {
             use_x_forwarded_for = true;
-            trusted_proxies = [ traefik ];
+            trusted_proxies = trustedProxies;
           };
 
           automation = "!include automations.yaml";

@@ -45,7 +45,16 @@
     # The irulan-dns stack's Pi-hole (phase 5): gravity and the query log,
     # outside the periphery's clone for the same reason as Kuma's.
     "d /srv/dns/pihole 0755 root root - -"
+    # The irulan-edge stack (phase 6): step-ca's copy of Leia's CA, owned by
+    # the image's step user, and Traefik's ACME storage. Both hold keys.
+    "d /srv/edge/step-ca 0700 1000 1000 - -"
+    "d /srv/edge/acme 0700 root root - -"
   ];
+
+  # irulan-edge's Traefik runs on the host network, so it reaches this host's
+  # native services on localhost and the Pi-hole through the shim. Ports a
+  # container binds that way go through this firewall, unlike published ones.
+  networking.firewall.allowedTCPPorts = [ 80 443 ];
 
   # Kuma's Matter monitor reaches the Matter server on this host from the
   # stack's bridge, which the compose file names br-monitoring. Only that
