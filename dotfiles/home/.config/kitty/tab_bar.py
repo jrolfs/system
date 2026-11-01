@@ -1,17 +1,25 @@
 import os
 import re
 
-from kitty.tab_bar import DrawData, ExtraData, Formatter, TabBarData, draw_tab_with_powerline, as_rgb
+from kitty.tab_bar import (
+    DrawData,
+    ExtraData,
+    Formatter,
+    TabBarData,
+    draw_tab_with_powerline,
+    as_rgb,
+)
 from kitty.fast_data_types import Screen, get_boss
 from kitty.utils import path_from_osc7_url
 from kittens.ssh.utils import get_connection_data
 
-SSH_BG = 0xEA6962  # gruvbox material red
+SSH_COLOR = 0x89B482  # gruvbox material aqua
 SSH_ICON = "󰌘"
+# The title colour in tab_title_template in kitty.conf, restored after the host.
+INACTIVE_TITLE_FG = "_A89984"
 # Mirrors _ktt_max_title_len and its truncation glyph in zsh/kitty-tabs.zsh.
 MAX_TITLE_LEN = 24
 TRUNCATION_GLYPH = ""
-COMBINING_RING = "̊"
 
 # The ctrl+s>shift+N goto_session bindings in bindings.conf.
 SESSION_NUMBERS = {"dotfiles": 1, "work": 2, "personal": 3}
@@ -35,13 +43,15 @@ def remote_dir_title(path: str) -> str:
     # and the length cap can, with the home directory guessed from its shape.
     if not path:
         return ""
-    title = "~" if REMOTE_HOME.match(path) else os.path.basename(path.rstrip("/")) or "/"
+    title = (
+        "~" if REMOTE_HOME.match(path) else os.path.basename(path.rstrip("/")) or "/"
+    )
     if len(title) > MAX_TITLE_LEN:
         title = title[: MAX_TITLE_LEN - 1] + TRUNCATION_GLYPH
     return title
 
 
-def ssh_title(window) -> str:
+def ssh_title(window, is_active: bool) -> str:
     # The shell integration that kitten ssh installs remotely reports the cwd
     # as an OSC 7 URL carrying the remote hostname. Before the first prompt
     # there is none yet, so the host comes from the kitten's command line.
@@ -54,19 +64,24 @@ def ssh_title(window) -> str:
         host = connection.hostname if connection else ""
     host = host.split("@")[-1].split(".")[0].lower()
     path = path_from_osc7_url(url) if url else ""
-    return f"{SSH_ICON} {Formatter.bold}{host}:{Formatter.nobold}{remote_dir_title(path)}"
+    directory = remote_dir_title(path)
+    # The active tab is filled with SSH_COLOR instead, where coloured text
+    # would vanish, so only the inactive title carries it.
+    if is_active:
+        return f"{SSH_ICON} {Formatter.bold}{host}{Formatter.nobold}:{directory}"
+    accent = getattr(Formatter.fg, f"_{SSH_COLOR:06X}")
+    restore = getattr(Formatter.fg, INACTIVE_TITLE_FG)
+    return (
+        f"{accent}{SSH_ICON} {Formatter.bold}{host}{Formatter.nobold}"
+        f"{restore}:{directory}"
+    )
 
 
-def as_ssh_tab(tab: TabBarData | None) -> TabBarData | None:
-    if tab is None:
-        return None
+def as_ssh_tab(tab: TabBarData) -> TabBarData:
     window = ssh_window(tab.tab_id)
     if window is None:
         return tab
-    tab = tab._replace(title=ssh_title(window))
-    tab = tab._replace(active_bg=SSH_BG, inactive_bg=SSH_BG)
-
-    return tab
+    return tab._replace(title=ssh_title(window, tab.is_active), active_bg=SSH_COLOR)
 
 
 def draw_tab(
@@ -79,23 +94,25 @@ def draw_tab(
     is_last: bool,
     extra_data: ExtraData,
 ) -> int:
-    original = tab
     tab = as_ssh_tab(tab)
-    if tab is not original:
-        draw_data = draw_data._replace(
-            title_template=draw_data.title_template.replace("{index}", "{sub.index}" + COMBINING_RING),
-        )
     # Each powerline slant is filled with the next tab's background, so that
-    # tab needs the same treatment or the edge into an ssh tab stays uncoloured.
+    # tab needs the same treatment or the edge into an active ssh tab stays pink.
     # ExtraData is a plain class rather than a dataclass, so copy it by hand.
     next_extra_data = ExtraData()
     next_extra_data.prev_tab = extra_data.prev_tab
-    next_extra_data.next_tab = as_ssh_tab(extra_data.next_tab)
+    next_extra_data.next_tab = extra_data.next_tab and as_ssh_tab(extra_data.next_tab)
     next_extra_data.for_layout = extra_data.for_layout
     extra_data = next_extra_data
 
     end = draw_tab_with_powerline(
-        draw_data, screen, tab, before, max_tab_length, index, is_last, extra_data,
+        draw_data,
+        screen,
+        tab,
+        before,
+        max_tab_length,
+        index,
+        is_last,
+        extra_data,
     )
 
     if is_last and tab.active_session_name:
@@ -109,7 +126,7 @@ def draw_tab(
             padding = cells_available - label_len
             screen.cursor.x = end + padding
             screen.cursor.bg = as_rgb(0xAB6C7D)  # gruvbox dim purple
-            screen.cursor.fg = as_rgb(0x282828)   # gruvbox bg dark
+            screen.cursor.fg = as_rgb(0x282828)  # gruvbox bg dark
             screen.cursor.bold = True
             screen.draw(session_label)
 
