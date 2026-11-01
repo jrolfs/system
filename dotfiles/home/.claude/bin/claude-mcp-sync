@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Sync declaratively-configured MCP servers into Claude Code's user scope.
+
+Claude Code has no global, symlinkable MCP config file. Project servers live in
+a repo's `.mcp.json`, but user-global servers live in `~/.claude.json` — a
+mutable runtime blob (chat history, cached auth, per-project state) that can't
+be tracked in dotfiles. So the source of truth here is a small declarative file
+(`~/.config/claude/mcp.json`, tracked in dotfiles) and this script applies it to
+the user scope idempotently via `claude mcp add-json --scope user`.
+
+Both the terminal CLI and Zed's ACP agent read the user scope — the ACP adapter
+runs the SDK with `settingSources: ["user", "project", "local"]` — so one synced
+file covers both surfaces regardless of the model provider (Foundry, Claude
+account, etc.). This matters because claude.ai account connectors are only
+served to clients talking to Anthropic's own API; under Foundry they disappear,
+and each service has to be registered as its own remote MCP server instead.
+
+OAuth tokens are deliberately NOT synced: the `/mcp` login flow caches them
+per-machine under `~/.claude`, which is where machine-local secrets belong.
+After a sync, authenticate each new server once with `/mcp` in a session.
+
+    claude-mcp-sync            # add servers missing from the user scope
+    claude-mcp-sync --force    # re-add every server (drops cached OAuth -> re-auth)
+    claude-mcp-sync --dry-run  # print planned actions, change nothing
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def config_path() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return Path(base) / "claude" / "mcp.json"
+
+
+def server_present(name: str) -> bool:
+    return subprocess.run(
+        ["claude", "mcp", "get", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--force", action="store_true",
+                        help="re-add servers even if already present (drops cached OAuth)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show planned actions without applying them")
+    args = parser.parse_args()
+
+    path = config_path()
+    if not path.is_file():
+        print(f"no MCP config at {path}", file=sys.stderr)
+        return 1
+
+    servers = json.loads(path.read_text()).get("mcpServers", {})
+    if not servers:
+        print(f"no mcpServers declared in {path}")
+        return 0
+
+    added = False
+    for name, cfg in servers.items():
+        present = server_present(name)
+        if present and not args.force:
+            print(f"= {name} already present")
+            continue
+
+        added = True
+        print(f"{'~ re-adding' if present else '+ adding'} {name}")
+        if args.dry_run:
+            continue
+
+        if present:
+            subprocess.run(["claude", "mcp", "remove", "--scope", "user", name],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if subprocess.run(
+            ["claude", "mcp", "add-json", "--scope", "user", name, json.dumps(cfg)]
+        ).returncode != 0:
+            print(f"! failed to add {name}", file=sys.stderr)
+
+    if added and not args.dry_run:
+        print("done — authenticate new servers with /mcp in a session")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,10 +1,9 @@
 { pkgs, lib, hostname, userName, ... }:
 
 # Beelink SEi 12 Mini PC — i5-12450H, 16 GB RAM, 500 GB SSD.
-# Home-infra host, taking over Leia's services in the phases laid out in
-# documentation/IRULAN-MIGRATION.md. Services that suit a NixOS module run
-# natively from here; the rest are Komodo stacks in the rolfs.lan repo, which
-# this host's periphery deploys.
+# Home-infra host: native Home Assistant + Plex + step-ca; bootstrap-tier
+# Komodo containers; everything else lives in the compose repo and is
+# deployed via Komodo periphery.
 #
 # hardware-configuration.nix is NOT imported here yet — it gets generated
 # by `nixos-generate-config --root /mnt` during the install on real
@@ -16,55 +15,15 @@
     ./disko.nix
     # ./hardware-configuration.nix              # TODO: add after install
 
-    ../../modules/nixos/desktop
-    ../../modules/nixos/arcade
+    # Attached to a TV with a keyboard, so it gets the GUI applications even
+    # though it spends most of its life headless.
+    ../../modules/nixos/desktop.nix
 
-    ../../modules/nixos/services/komodo.nix
+    ../../modules/nixos/services/home-assistant.nix
     ../../modules/nixos/services/plex.nix
-    ../../modules/nixos/services/agent-vm.nix
-
-    # Needs state that still lives on Leia and is placed by hand before first
-    # start (the CA data and its intermediate password). Imported without it,
-    # it fails every switch: nixos-rebuild exits non-zero whenever a unit
-    # fails to start. Bring it back in alongside its migration.
-    # ../../modules/nixos/services/step-ca.nix
+    ../../modules/nixos/services/step-ca.nix
+    ../../modules/nixos/services/komodo.nix
   ];
-
-  # Core stays on Leia. Enabling it here would also need /etc/komodo/*.env
-  # placed by hand first, for the reason step-ca is commented out above.
-  komodo.periphery.enable = true;
-
-  # A microVM running opencode's server, for agents to work in without the
-  # rest of this machine in reach.
-  agentVm = {
-    enable = true;
-    externalInterface = "enp3s0";
-    telegramBot = {
-      enable = true;
-      allowedUserId = 6908664565;
-    };
-  };
-
-  # Attached to a TV with a keyboard and trackpad, so it boots to a desktop
-  # even though most of what it runs is headless, with the emulator station
-  # beside it (documentation/ARCADE.md).
-  desktop.enable = true;
-  keyboard.enable = true;
-  # The Magic Keyboard and Trackpad pair over it, and have to work at the
-  # console as well as in the desktop.
-  hardware.bluetooth.enable = true;
-  arcade.enable = true;
-
-  # The TV (and the receiver behind it) on and off with the machine, through
-  # Home Assistant's control of the Frame, since this HDMI port has no CEC.
-  av = {
-    enable = true;
-    entity = "media_player.living_room_living_room_smart";
-  };
-
-  # Boots to the text console until the desktop's first-boot crash is fixed.
-  # The `desktop` and `station` commands still start either one by hand.
-  sessions.boot = "console";
 
   networking.hostName = hostname;
   networking.useDHCP = lib.mkDefault true;  # static IP TBD; DHCP for now.
@@ -86,13 +45,7 @@
     # `initial` is load-bearing. mutableUsers defaults to true, so this
     # applies only when the account is created — it seeds the install, and
     # `passwd` afterwards sticks. A reinstall falls back to this.
-    # Verify against the vault before an install, by re-hashing with this
-    # value's own salt: `op read 'op://Secrets/Irulan/password' |
-    # mkpasswd -m yescrypt -S "$(cut -d'$' -f1-4 <<< "$hash")" -s`. The two
-    # drifted once already, because regenerating the 1Password item does not
-    # touch this file, and the failure only shows up as a password that
-    # doesn't work on a machine nobody can log into.
-    initialHashedPassword = "$y$j9T$4w877UixkTowZS062uf13/$Pfc3xrJns0xQ8Sv.wdqlVbnADcXHREqDVXtN9i.14XC";
+    initialHashedPassword = "$y$j9T$bfhk1LFVc.iTrIl0ZAREM1$vrA6U7F2fLQgZlBhaoNWiNr330JmBHauHjoKjOJBtU6";
     # video + render: Plex hardware transcoding via Quick Sync.
     # docker: invoke docker without sudo (Komodo periphery + ad-hoc).
     extraGroups = [ "wheel" "video" "render" "docker" ];
@@ -108,12 +61,9 @@
     ];
   };
 
-  # i915 loads its GuC and HuC firmware from linux-firmware, and on 12th-gen
-  # the low-power encoder Quick Sync relies on doesn't work without HuC. The
-  # generated hardware-configuration.nix doesn't turn this on by itself.
-  hardware.enableRedistributableFirmware = true;
-
-  # The Docker daemon Komodo deploys stacks to, through the periphery.
+  # Docker daemon for the bootstrap-tier Komodo containers (see
+  # modules/nixos/services/komodo.nix). Komodo manages its own
+  # containers via the docker socket.
   virtualisation.docker.enable = true;
 
   # SSH for `nixos-rebuild switch --target-host jamie@irulan` from
@@ -124,29 +74,22 @@
     settings.PermitRootLogin = "no";
   };
 
-  # Leia's media share, read-only: the download stack on Leia is the only
-  # writer, and two Plex servers scanning one tree must not both be able to
-  # rewrite it. The library DB (services.plex.dataDir) is on the local SSD.
-  # x-systemd.automount + noauto: don't block boot if the NAS is down; mount
-  # on first access instead.
-  #
-  # The version is left to negotiation. QTS offers 4.1 at most, and a pinned
-  # nfsvers fails outright against a server without it instead of falling back.
-  #
-  # TODO: confirm the export path. QTS exports NFSv4 under a pseudo-root
-  # named after the share (/Media), and v3 at /share/Media. On Leia,
-  # `cat /etc/exports` shows both, and Control Panel → Shared Folders →
-  # Media → Edit Shared Folder Permission → NFS host access is where Irulan
-  # has to be allowed (read-only is enough).
+  # NFS mount of the QNAP media share. Plex / media services read from
+  # here; library DB (services.plex.dataDir) is on the local SSD.
+  # x-systemd.automount + noauto: don't block boot if NAS is down;
+  # mount on first access; remount cleanly when network comes back.
+  # TODO: confirm export path on QNAP (currently /share/Media exposed
+  # via NFS on the NAS — adjust if QNAP exports a different path).
   fileSystems."/mnt/nas/media" = {
-    device = "leia.rolfs.lan:/Media";
+    device = "qnap.lan:/share/Media";
     fsType = "nfs";
     options = [
       "x-systemd.automount"
       "noauto"
       "_netdev"
-      "ro"
+      "nfsvers=4.2"
       "soft"
+      "intr"
     ];
   };
 

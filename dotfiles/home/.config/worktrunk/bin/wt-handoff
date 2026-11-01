@@ -28,7 +28,7 @@ push_args=()
 while [ $# -gt 0 ]; do
   case $1 in
     --all) all=yes ;;
-    -n | --dry-run | --preview) dry=yes ;;
+    -n | --dry-run) dry=yes ;;
     --no-verify) push_args+=(--no-verify) ;;
     --push-arg)
       shift
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
       ;;
     --push-arg=*) push_args+=("${1#*=}") ;;
     -h | --help)
-      echo "usage: wt handoff [--all] [--no-verify] [--push-arg=ARG] [pattern...] [--preview]"
+      echo "usage: wt handoff [--all] [--dry-run] [--no-verify] [--push-arg=ARG] [pattern...]"
       exit 0
       ;;
     -*)
@@ -149,17 +149,11 @@ for top in "${selected[@]}"; do
     parents+=(-p "$previous")
   fi
 
-  # Home-relative, because home is /Users/<you> on the Macs and /home/<you> on
-  # Linux, and an absolute path restores to a directory the other platform
-  # can't create. wt-restore and wt-relocate resolve it against their own home.
-  recorded=$top
-  case $top in "$HOME"/*) recorded="~/${top#"$HOME"/}" ;; esac
-
   # One -m per paragraph, and git only parses the final paragraph as trailers,
   # so all three must share it.
   commit=$(git -C "$top" commit-tree "$tree" "${parents[@]}" \
     -m "wip: $dir" \
-    -m "Wt-Path: $recorded
+    -m "Wt-Path: $top
 Wt-Branch: $branch
 Wt-Host: $(hostname -s)")
 

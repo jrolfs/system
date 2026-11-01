@@ -39,18 +39,7 @@
         "workspace::MoveItemToPaneInDirection",
         { "direction": "down" },
       ],
-      "ctrl-w shift-m": "pane::JoinAll"
     },
-  },
-
-  {
-    "context": "Dock",
-    "bindings": {
-      "ctrl-w h": "workspace::ActivatePaneLeft",
-      "ctrl-w l": "workspace::ActivatePaneRight",
-      "ctrl-w k": "workspace::ActivatePaneUp",
-      "ctrl-w j": "workspace::ActivatePaneDown"
-    }
   },
 
   {
@@ -70,27 +59,6 @@
       "[ c": "editor::GoToPreviousHunk",
       "g w": "vim::HelixJumpToWord",
     },
-  },
-
-  // {
-  //   "context": "vim_mode == normal || vim_mode == visual",
-  //   "bindings": {
-  //     "s": "vim::PushSneak",
-  //     "shift-s": "vim::PushSneakBackward"
-  //   }
-  // },
-
-  {
-    "context": "vim_operator == a || vim_operator == i || vim_operator == cs",
-    "bindings": {
-      // Traditional Vim behavior
-      "q": "vim::AnyQuotes",
-      "b": "vim::AnyBrackets",
-
-      // mini.ai plugin behavior
-      "Q": "vim::MiniQuotes",
-      "B": "vim::MiniBrackets"
-    }
   },
 
   {

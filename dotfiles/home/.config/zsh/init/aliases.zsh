@@ -23,10 +23,12 @@ if command -v bat >&/dev/null 2>&1; then
   alias cat=bat
 fi
 
-# eza-ls (modules/home/shared/eza.nix) runs the system ls for anything it can't
-# translate, and for any ls whose output isn't a terminal. `\ls` skips it.
-if command -v eza-ls >&/dev/null 2>&1; then
-  alias ls=eza-ls
+# exa is unmaintained and gone from nixpkgs; eza is the fork that replaced it.
+# The name still resolves — nixpkgs' eza ships a bin/exa compat symlink — but
+# guarding on the binary that's actually installed means this doesn't quietly
+# stop aliasing ls the day that symlink goes away.
+if command -v eza >&/dev/null 2>&1; then
+  alias ls="$XDG_DATA_HOME/eza-wrapper.sh"
 fi
 
 # Images
@@ -59,7 +61,7 @@ alias gpgr="gpg-connect-agent reloadagent /bye"
 
 # Node
 
-alias n=pnpm
+alias update-node-version="node --version | tr -d v >! .node-version"
 
 # HTTPie
 
