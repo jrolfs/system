@@ -32,13 +32,13 @@
   ];
 
   # Core moves here from Leia, ahead of the services it deploys
-  # (documentation/KOMODO-CORE-CUTOVER.md). `activate` stays off until the
-  # database and Core's key pair have been carried over; flipping it is the
-  # cutover's last step on this host.
+  # (documentation/KOMODO-CORE-CUTOVER.md). `activate` was held off until
+  # Leia's database and Core's key pair were carried over, which happened on
+  # 2026-11-01; turning it off again stops Core here, the start of rolling back.
   komodo.periphery.enable = true;
   komodo.core = {
     enable = true;
-    activate = false;
+    activate = true;
     # Leia's Core was v2.1.2 when its database moved here, and a database
     # only migrates forward; 2.3.3 is also Irulan's periphery, from nixpkgs.
     imageTag = "2.3.3";
