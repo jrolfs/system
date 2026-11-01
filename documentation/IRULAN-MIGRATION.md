@@ -490,15 +490,69 @@ copied back the same way.
 
 ### Phase 5: Pi-hole
 
-The stack `irulan-dns`, on a macvlan network at `10.10.10.1` with the MAC
-from its Kea reservation.
+Done 2026-11-01: two Pi-holes instead of one. The primary moved to Irulan as
+the Komodo stack `irulan-dns` (rolfs.lan `irulan/dns/compose.yaml`), and
+Leia's stayed as a secondary, so DHCP can hand out two filtering resolvers
+and either can go down unnoticed. kath stays the upstream for both, and
+still forwards over TLS and answers `rolfs.lan` and `rolfs.casa`.
 
-- **Cutover**: stop Leia's, then start Irulan's. The same IP and MAC can't be
-  up twice. During the gap clients fall back to kath (`10.10.10.10`), which
-  DHCP hands out as the second server.
-- **State**: Pi-hole's config directory.
-- **Secrets**: `pihole.secrets.env` (the web password).
-- **Rollback**: the reverse.
+| Role | Address | MAC | Where |
+|---|---|---|---|
+| Primary | `10.10.10.1` | `02:42:a0:a0:e4:fd` (Kea's reservation) | Irulan, `irulan-dns`, on `irulan-monitoring_lan` |
+| Secondary | `10.10.10.3` | `02:42:0a:0a:0a:03`, pinned | Leia, still in `rolfs-casa` |
+| Irulan's shim | `10.10.10.4/32` | random | `lan-shim` on Irulan, route to `.1` only |
+
+What to know:
+
+- **The shim** exists because a host can't reach a macvlan container on
+  itself. Without it Irulan, and Home Assistant on its network, would time out
+  on the first DNS server before falling back. It must answer ARP only for its
+  own address (`arp_ignore=1`, set in `hosts/irulan/default.nix`): with the
+  default it answered for enp3s0's addresses too, dhcpcd's duplicate-address
+  probe took that as a conflict, declined every lease it was offered, and
+  Irulan lost `10.10.10.9` mid-cutover. dhcpcd now also skips Docker's
+  `veth*`/`br-*` interfaces, one of which it had briefly made the default
+  route.
+- **One macvlan network per subnet.** Docker refuses a second network for
+  `10.10.10.0/24`, so the Pi-hole joins `irulan-monitoring_lan` as an external
+  network. A shared LAN network created by the system repo, which every stack
+  joins, would decouple the two stacks; worth doing before a third stack needs
+  a LAN address.
+- **Irulan's Pi-hole carries no secret.** Its web password is the hash in the
+  `pihole.toml` copied from Leia. Leia's still reads `WEBPASSWORD` from its
+  gitignored `pihole.secrets.env`, recreated with Leia's own `docker compose`
+  rather than a Komodo deploy, so the value never reached Komodo's logs.
+- **nebula-sync is in the stack but not running.** It needs the web password
+  in plain text, and creating its 1Password item was refused by the agent's
+  permission classifier. To enable it:
+  1. Create 1Password item `pihole` in **Secrets** with a concealed field
+     `password` holding the Pi-hole web password (the value in Leia's
+     `pihole.secrets.env`; both Pi-holes share it).
+  2. Add `PIHOLE_WEBPASSWORD = "op://Secrets/pihole/password";` to
+     `komodo.secrets` in `hosts/irulan/default.nix` and switch Irulan.
+     (Not before step 1: a reference to a missing item fails the whole sync,
+     dhcp-probe's secret included.)
+  3. In Komodo, set the `irulan-dns` stack's Environment to
+     `PIHOLE_WEBPASSWORD=[[PIHOLE_WEBPASSWORD]]`.
+  4. In `irulan/dns/compose.yaml`, drop nebula-sync's `profiles` line and
+     change both `${PIHOLE_WEBPASSWORD:-}` to `${PIHOLE_WEBPASSWORD:?}`, push,
+     pull the repo in Komodo and deploy the stack. It syncs at :17 each hour.
+- **`10.10.10.9` is on enp3s0 by hand until Kea lets it go.** The declined
+  leases left `.9` in Kea's decline quarantine (24 hours by default), so dhcpcd
+  holds a pool address (`.151`) and `.9` was added manually to keep
+  `irulan.rolfs.lan`, which Komodo and Leia's periphery use, working. A reboot
+  before the quarantine ends drops `.9`. After it, `sudo systemctl restart
+  dhcpcd` (or a reboot) takes `.9` from the reservation again.
+
+**Jamie's step: DHCP.** pfSense → Services → DHCP Server → LAN → DNS servers:
+`10.10.10.1` and `10.10.10.3`, kath dropped, so a client gets filtered answers
+whichever server it asks. Keeping `10.10.10.10` as a third entry is the safety
+net if both Pi-holes ever fail together, at the cost of some unfiltered
+lookups, since clients don't treat later entries strictly as backups.
+
+Rollback: stop `irulan-dns`, then on Leia set the pihole service back to
+`10.10.10.1` (drop the pinned MAC) and `docker compose -p rolfs-casa up -d
+--no-deps pihole` in Komodo's clone.
 
 ### Phase 6: Traefik and step-ca
 
