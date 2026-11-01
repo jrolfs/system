@@ -246,12 +246,21 @@ in
       # mid-activation. With it, dhcpcd keeps Irulan's own address and the
       # second one is added beside it.
       networking.interfaces.enp3s0.useDHCP = true;
+      # A /32, not a /24. As a /24 it's added before dhcpcd's lease at boot and
+      # becomes enp3s0's primary address, so everything Irulan sends to the LAN
+      # comes from .2. Leia's NFS server then saw an unnamed client rather than
+      # irulan.rolfs.lan and refused the media share. A /32 adds no subnet
+      # route, so the lease's address stays the source and .2 still answers.
       networking.interfaces.enp3s0.ipv4.addresses = [
         {
           address = "10.10.10.2";
-          prefixLength = 24;
+          prefixLength = 32;
         }
       ];
+
+      # Removing a primary address removes its secondaries too unless this is
+      # set, which would take the lease's address with it when .2 changes.
+      boot.kernel.sysctl."net.ipv4.conf.enp3s0.promote_secondaries" = 1;
 
       # network-addresses-enp3s0 is only wanted by network-setup, which a
       # switch doesn't restart, so turning this on with nix-switch left .2
