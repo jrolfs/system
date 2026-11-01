@@ -35,6 +35,17 @@
   # placed by hand first, for the reason step-ca is commented out above.
   komodo.periphery.enable = true;
 
+  # Home Assistant and the Matter server, moved here from Leia in phase 4 of
+  # documentation/IRULAN-MIGRATION.md. serveLegacyAddress gives Irulan
+  # 10.10.10.2, Home Assistant's address on Leia, so devices, the companion
+  # apps and Traefik's route find it where they always have. Leia's containers
+  # are stopped with their restart policy off, and must stay that way while
+  # this is on, or the two would fight over the address.
+  homeAssistant = {
+    enable = true;
+    serveLegacyAddress = true;
+  };
+
   # A microVM running opencode's server, for agents to work in without the
   # rest of this machine in reach.
   agentVm = {
