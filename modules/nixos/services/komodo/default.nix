@@ -282,6 +282,7 @@ in
       # active from RemainAfterExit.
       systemd.services.komodo-secrets-sync-refresh = {
         description = "Sync Komodo secret variables from 1Password (daily)";
+        wants = [ "network-online.target" ];
         after = [ "network-online.target" "docker-komodo-core.service" "onepassword-render-komodo-api-key.service" ];
         requires = [ "onepassword-render-komodo-api-key.service" ];
         environment = syncEnvironment;
