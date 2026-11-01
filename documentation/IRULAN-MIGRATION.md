@@ -325,8 +325,16 @@ What moved, and how:
   `irulan.rolfs.lan:32400`. There was no `plex-irulan` route to drop: the
   phase-1 branch adding it was never merged.
 
-Left for Jamie: retarget the Meter NAT rule for 32400 on OPT1 to `10.10.10.9`,
-and check Settings → Remote Access in Plex reports the server as reachable.
+Left for Jamie: the Meter NAT rule for 32400 on OPT1 still points at Leia.
+It's on hold while Jamie reworks routing to the Meter subnet, and should point
+at `10.10.10.9` as part of that. Also check Settings → Remote Access in Plex
+reports the server as reachable.
+
+kath's DNS Resolver now exempts `plex.direct` from rebinding protection
+(`private-domain: "plex.direct"` in its custom options). Without it, local
+clients couldn't resolve Plex's secure local addresses and went through
+`plex.rolfs.casa` and Traefik instead, which Plex counts as a remote
+connection because of the `X-Forwarded-For` header.
 
 Rollback: `systemctl stop plex` on Irulan, then on Leia `qpkg_service enable
 PlexMediaServer && qpkg_service start PlexMediaServer`, and point the `plex`
@@ -563,11 +571,9 @@ What to know:
   before the quarantine ends drops `.9`. After it, `sudo systemctl restart
   dhcpcd` (or a reboot) takes `.9` from the reservation again.
 
-**Jamie's step: DHCP.** pfSense → Services → DHCP Server → LAN → DNS servers:
-`10.10.10.1` and `10.10.10.3`, kath dropped, so a client gets filtered answers
-whichever server it asks. Keeping `10.10.10.10` as a third entry is the safety
-net if both Pi-holes ever fail together, at the cost of some unfiltered
-lookups, since clients don't treat later entries strictly as backups.
+**DHCP: done** (2026-11-01). pfSense hands out `10.10.10.1` and `10.10.10.3`,
+with kath dropped, so a client gets filtered answers whichever server it asks.
+Clients move over as their 24-hour leases renew.
 
 Rollback: stop `irulan-dns`, then on Leia set the pihole service back to
 `10.10.10.1` (drop the pinned MAC) and `docker compose -p rolfs-casa up -d
