@@ -324,7 +324,7 @@ in
       };
     in
     super.runCommandLocal "claude-helpers"
-    { nativeBuildInputs = [ super.bun super.python3 ]; }
+    { nativeBuildInputs = [ super.bun super.python3 super.git ]; }
     ''
       install -d $out/bin
       find ${source} -maxdepth 1 -type f ! -name '*.ts' ! -name '*.tsx' \
@@ -348,6 +348,7 @@ in
         > node_modules/react-devtools-core/index.js
 
       export HOME=$TMPDIR
+      bun test source/tests
       for entry in source/*.ts source/*.tsx; do
         [ -e "$entry" ] || continue
         name=$(basename "$entry")

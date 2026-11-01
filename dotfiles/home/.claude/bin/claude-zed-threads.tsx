@@ -30,95 +30,19 @@
  * Any scripted `claude -p` run is also non-interactive and will appear here; in
  * a repo working directory these are almost always Zed threads in practice.
  */
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import * as z from "zod";
 
-import { paintFor } from "./lib/ansi.ts";
 import { fail, flag, parse } from "./lib/cli.ts";
-import { age, AGE_WIDTH, cell, GAP, layout, type Column } from "./lib/table.ts";
+import { cellsFor, columnsFor, printTable } from "./lib/thread-table.ts";
 import {
   displayFor,
-  momentOf,
   resumeCommand,
   zedThreads,
   type Scope,
-  type ZedThread,
 } from "./lib/threads.ts";
 
 const USAGE = "usage: claude-zed-threads [-d DIR] [--repo | --all] [--sk | --pick]";
-
-// Sibling worktrees share a long prefix and differ at the end, which is why
-// this column elides from the start. The bounds keep one very long branch name
-// from starving the titles.
-const WHERE_MIN = 12;
-const WHERE_MAX = 32;
-
-const columnsFor = (threads: readonly ZedThread[], multi: boolean): readonly Column[] => [
-  {
-    key: "age",
-    header: "when",
-    width: AGE_WIDTH,
-    align: "right",
-    tone: { dim: true },
-  },
-  ...(multi
-    ? ([
-        {
-          key: "where",
-          header: "worktree",
-          min: WHERE_MIN,
-          max: Math.min(
-            WHERE_MAX,
-            Math.max(WHERE_MIN, ...threads.map((thread) => basename(thread.cwd).length)),
-          ),
-          elide: "start",
-          optional: true,
-          tone: { color: "blue" },
-        },
-      ] as const)
-    : []),
-  { key: "thread", header: "thread", flex: true, min: 24, elide: "end" },
-];
-
-const cellsFor = (thread: ZedThread): Readonly<Record<string, string>> => ({
-  age: age(momentOf(thread)),
-  where: thread.cwd ? basename(thread.cwd) : "?",
-  thread: thread.title || "(untitled)",
-});
-
-const printTable = (threads: readonly ZedThread[], columns: readonly Column[]): void => {
-  const paint = paintFor(process.stdout);
-  const widths = layout(columns, (process.stdout.columns || 80) - 1);
-  const shown = columns.filter((column) => widths.has(column.key));
-
-  const line = (
-    values: Readonly<Record<string, string>>,
-    tone: (column: Column) => Parameters<typeof paint>[1],
-  ): string =>
-    shown
-      .map((column, index) =>
-        paint(
-          cell(values[column.key] ?? "", widths.get(column.key)!, {
-            elide: column.elide,
-            align: column.align,
-            pad: index < shown.length - 1,
-          }),
-          tone(column),
-        ),
-      )
-      .join(GAP);
-
-  console.log(
-    line(
-      Object.fromEntries(shown.map((column) => [column.key, column.header])),
-      () => ({ dim: true }),
-    ),
-  );
-  threads.forEach((thread) =>
-    console.log(line(cellsFor(thread), (column) => column.tone)),
-  );
-  console.log(paint("pick one to resume with: resume-zed", { dim: true }));
-};
 
 const main = async (): Promise<number> => {
   const argv = process.argv.slice(2);
@@ -187,7 +111,7 @@ const main = async (): Promise<number> => {
   }
 
   if (process.stdout.isTTY) {
-    printTable(threads, columnsFor(threads, multi));
+    printTable(threads, columnsFor(threads, multi), "pick one to resume with: resume-zed");
     return 0;
   }
 
