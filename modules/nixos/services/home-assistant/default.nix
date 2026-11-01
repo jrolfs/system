@@ -74,6 +74,10 @@ in
           # and an undeclared integration turns each discovery into a
           # ModuleNotFoundError for aiohomekit instead of a dismissable card.
           "homekit_controller"
+          # The same for QNAP: its DHCP matcher is QNAP's MAC prefix, which
+          # Leia's NIC has, so each of Leia's lease renewals starts a discovery
+          # that fails importing aioqsw.
+          "qnap_qsw"
           "hue"
           "lifx"
           "lutron_caseta"
@@ -117,8 +121,16 @@ in
           custom.ha-hatch
         ];
 
-        # Libraries a declared integration needs that nixpkgs doesn't package.
-        extraPackages = _: [ custom.broadlink-async ];
+        # broadlink-async is a library a declared integration needs that
+        # nixpkgs doesn't package. isal and zlib-ng are the fast compressors
+        # aiohttp-fast-zlib looks for, which the Docker image ships and the
+        # nixpkgs package leaves out, so without them every compressed HTTP
+        # response falls back to plain zlib.
+        extraPackages = ps: [
+          custom.broadlink-async
+          ps.isal
+          ps.zlib-ng
+        ];
 
         # Translated from rolfs.lan's tracked configuration.yaml. Strings
         # starting with "!" are written out as YAML tags, so the includes stay
@@ -178,13 +190,10 @@ in
         "f ${configDir}/scenes.yaml 0644 hass hass - []"
       ];
 
-      # Python Matter Server, the same version as Leia's container. Home
-      # Assistant reaches it at ws://localhost:5580/ws, so its port stays
-      # closed to the LAN.
-      # Camera streaming for Home Assistant, on localhost only: nothing but Home
-      # Assistant talks to it, and go2rtc's API has no authentication.
       systemd.services.home-assistant.environment.PYWEMO_HTTP_SERVER_PORT = "8989";
 
+      # Camera streaming for Home Assistant, on localhost only: nothing but Home
+      # Assistant talks to it, and go2rtc's API has no authentication.
       services.go2rtc = {
         enable = true;
         settings = {
@@ -193,6 +202,9 @@ in
         };
       };
 
+      # Python Matter Server, the same version as Leia's container. Home
+      # Assistant reaches it at ws://localhost:5580/ws, so its port stays
+      # closed to the LAN.
       services.matter-server = {
         enable = true;
 
@@ -205,7 +217,7 @@ in
 
       networking.firewall = {
         # 8989: pywemo's callback server, where Wemo devices push their state.
-        # Pinned below, since by default pywemo takes the first free port from
+        # Pinned above, since by default pywemo takes the first free port from
         # 8989 upward and the firewall needs to know which.
         allowedTCPPorts = [ 8123 8989 ];
         allowedTCPPortRanges = [ homekitPorts ];
