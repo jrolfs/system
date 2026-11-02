@@ -637,8 +637,10 @@ The stack is `irulan-edge` in Komodo, from rolfs.lan's `irulan/edge/`:
   Traefik reaches it over loopback. Its `.storage/http` holds that, not the
   YAML, as `modules/nixos/services/home-assistant` explains.
 
-Adding a name takes a service in `common.yml` and a router in each of the two
-domain files. DNS needs nothing, because both zones redirect every name to
+Adding a name depends on where it runs. A container on Leia gets `irulan.`
+labels beside its others, with a published port, and a container on Irulan
+gets ordinary `traefik.` labels. Anything without labels takes a service in
+`common.yml` and a router in each of the two domain files. DNS needs nothing, because both zones redirect every name to
 Irulan. That is also what keeps `rolfs.home` safe from `rolfs.lan`'s worst
 failure: a `step` router whose name doesn't resolve to Traefik fails its
 `tlsChallenge` forever and leaks a socket per retry, which is what took Leia's
@@ -649,19 +651,18 @@ zone.
 
 #### Where it stands
 
-Checked from the LAN on 2026-11-01:
+Checked on Irulan on 2026-11-02, after traefik-kop:
 
 - **`rolfs.home`**: all 19 names serve, each with its own certificate from
-  "Rolfs LAN CA Intermediate CA". Traefik holds 11 open files, so no challenge
-  is retrying.
+  "Rolfs LAN CA Intermediate CA". Traefik's open files stay flat (25), so no
+  challenge is retrying.
 - **`rolfs.dev`**: all 19 names route, but behind Traefik's self-signed
   default certificate. The wildcard can't be issued until Traefik has the
   Vercel token (below).
 - **Backends**: everything answers as it does through `rolfs.casa` (Plex and
-  NZBGet with 401 until signed in, Pi-hole at `/admin/`) except `sonarr`,
-  `radarr` and `unpackerr`. Those three are routed by Docker labels on Leia
-  and publish no port, so both domains return 502 for them until rolfs.lan's
-  `leia-publish-ports` branch is deployed.
+  NZBGet with 401 until signed in, Pi-hole at `/admin/`). Traefik has 22
+  routers from the file provider and 8 from Redis, one per labelled container
+  on Leia, each backed by `10.10.10.12` and its published port.
 
 #### Waiting on Jamie
 
@@ -685,9 +686,6 @@ Checked from the LAN on 2026-11-01:
    4. Change `${VERCEL_API_TOKEN:-}` to `${VERCEL_API_TOKEN:?}` in
       `irulan/edge/compose.yaml`, so a missing token fails the deploy instead
       of starting a Traefik that can't renew.
-2. **The `rolfs-casa` deploy that starts traefik-kop** (rolfs.lan `d885d46`,
-   below). It recreates the eight labelled containers, for a few seconds each,
-   qBittorrent included.
 
 #### Toward one edge (decided 2026-11-02)
 
@@ -698,14 +696,12 @@ Traefik and step-ca stop once nothing points at them. In order:
 
 1. **Traefik 3.7 with the Docker provider.** Done 2026-11-02 (rolfs.lan
    `cebbc08`). All 38 names answered as before.
-2. **traefik-kop.** Redis on Irulan and Traefik's Redis provider are live
-   (`54c9ded`). On Leia, `traefik-kop` and the `irulan.` labels on NZBGet,
-   TubeSync, Sonarr, Radarr, Prowlarr, qBittorrent, qui and Unpackerr are
-   committed (`d885d46`, which also publishes Sonarr's, Radarr's and
-   Unpackerr's ports and supersedes `leia-publish-ports`) and take effect with
-   the next `rolfs-casa` deploy. After that, their services and routers come
-   out of `irulan/edge/traefik/dynamic/`, since Redis now carries them. The
-   Redis routers win while both exist, because their two-host rules are longer.
+2. **traefik-kop.** Done 2026-11-02. Redis on Irulan and Traefik's Redis
+   provider (`54c9ded`), then `traefik-kop` and the `irulan.` labels on
+   NZBGet, TubeSync, Sonarr, Radarr, Prowlarr, qBittorrent, qui and Unpackerr
+   (`d885d46`, which also published Sonarr's, Radarr's and Unpackerr's ports
+   and superseded `leia-publish-ports`). Their file-provider entries came out
+   afterwards (`3adcfbf`). The three that returned 502 now answer.
 3. **The Vercel token** (above), for the `rolfs.dev` wildcard and later a
    `rolfs.casa` one.
 4. **`.casa` and `.lan` move to Irulan.** Irulan gets a `rolfs.casa` wildcard
