@@ -67,11 +67,28 @@ in
     # As a drop-in: autovt@tty1 is an instance of a template, so by default
     # NixOS writes this out as a whole unit file with nothing to run, which
     # replaced the real getty and left tty1 blank anyway.
+    #
+    # Started once at boot, not wanted by getty.target. A switch starts every
+    # active target again, so with the want, each switch after `desktop`
+    # brought the getty back and stopped greetd, which conflicts with it.
+    # nixpkgs' getty module leaves that want out whenever a display manager is
+    # enabled, for the same reason. This unit stays active once it has run, so
+    # a switch has nothing to start.
     (mkIf (cfg.boot == "console" && greetd) {
       systemd.services."autovt@tty1" = {
         enable = mkForce true;
         overrideStrategy = "asDropin";
-        wantedBy = [ "getty.target" ];
+      };
+
+      systemd.services.console-login = {
+        description = "Text log-in on tty1 after a console boot";
+        wantedBy = [ "multi-user.target" ];
+        restartIfChanged = false;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${config.systemd.package}/bin/systemctl start --no-block autovt@tty1.service";
+        };
       };
     })
   ];
