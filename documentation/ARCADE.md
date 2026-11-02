@@ -133,8 +133,19 @@ default output. Its driver and empty device override are declared in
 `modules/nixos/arcade/default.nix`, overriding saved RetroArch settings. This
 avoids passing a PulseAudio sink name to ALSA, which fails with `Unknown PCM`.
 
+That default output is the receiver over HDMI, for every user on Irulan.
+`hosts/irulan/default.nix` has WirePlumber prefer the sound card's HDMI
+profile over its analog line-out, which otherwise wins and leaves no HDMI
+output at all, and starts the HDMI route at full volume so the receiver is
+the volume control. Analog only comes back while the receiver is off.
+
 Output selection and volume belong to the `arcade` user's PipeWire session,
-not Jamie's SSH session. HDMI routing is not pinned by this configuration.
+not Jamie's SSH session. To see what the station is playing into while it
+runs:
+
+```sh
+sudo -u arcade XDG_RUNTIME_DIR=/run/user/$(id -u arcade) wpctl status
+```
 
 ## The theme
 
