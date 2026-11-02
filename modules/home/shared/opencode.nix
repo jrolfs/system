@@ -155,7 +155,18 @@ in
 
     # The terminal client's settings, cli.json in opencode 2 (tui.json was the
     # old client's). The `system` theme takes the terminal's own colors.
-    cli.theme.name = "system";
+    cli = {
+      theme.name = "system";
+
+      # V2 support is experimental, so keep the upstream-recommended pin.
+      # Updates stay explicit here rather than prompting from every client.
+      plugins = [
+        {
+          package = "vimcode@git+https://github.com/oribarilan/vimcode.git#v0.19.2";
+          options.updateCheck = false;
+        }
+      ];
+    };
 
     settings = {
       providers = lib.mapAttrs (_: entry: { settings.apiKey = "{file:${files.${entry}}}"; }) available
