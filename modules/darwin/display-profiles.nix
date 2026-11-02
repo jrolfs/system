@@ -44,7 +44,7 @@ let
     "13\" M4 Air" = { kitty = 12; moomGap = 15; superhuman = 0; slack = -2; }; # slack inferred
     "13\" M4 Air ← iPad × Stand" = { kitty = 12; moomGap = 15; superhuman = 0; slack = -2; };
     "14\" Pro" = { kitty = 13; moomGap = 15; superhuman = 0; slack = -2; }; # slack inferred
-    "1440 × 810, 1180 × 820" = { kitty = 13; moomGap = 12; superhuman = 0; slack = -2; }; # both inferred
+    "13\" M5 Air ← iPad × Stand" = { kitty = 12; moomGap = 12; superhuman = 0; slack = -2; }; # both inferred
 
     # Workspaces that had no actions at all. Values follow the machine they
     # describe: the 14" Pro pair tracks 14" Pro, the M4 Air pair tracks M4 Air,
