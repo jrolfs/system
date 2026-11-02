@@ -108,6 +108,12 @@ let
       caller_path=$PATH
       export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
+      # Hammerspoon passes no locale either, and zsh expands a \u escape only
+      # under a UTF-8 one. Without it the separator below fails with
+      # "character not in range", and the script exits before it reaches
+      # toggle or focus, so both bindings silently do nothing.
+      export LC_CTYPE=en_US.UTF-8
+
       kitten=/opt/homebrew/bin/kitten
       kitty_panel=${kittyPanel}/bin/kitty-panel
       jq=${lib.getExe pkgs.jq}
