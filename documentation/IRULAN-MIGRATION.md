@@ -713,6 +713,10 @@ first, with its own runbook: [KOMODO-CORE-CUTOVER.md](KOMODO-CORE-CUTOVER.md).
 - ~Homebridge and vdirsyncer have files in rolfs.lan but no Compose entry. Are
   they running anywhere, and do they move or retire?~ gone.
 - Phase 3: move the QPKG's library, or keep the fresh server?
-- Should Irulan's periphery pin Core's public key, as Leia's does? It would be
-  `services.komodo-periphery.auth.corePublicKeys`, with the key from Core's
-  `/config/keys/core.pub`. Not secret, but not in either repo yet. < You tell me, heh.
+- ~Should Irulan's periphery pin Core's public key, as Leia's does?~ No, not
+  while Core is on Irulan. The pin guards the connection's path, and Irulan's
+  periphery reaches Core over loopback, where anything able to impersonate
+  Core already has the host. Leia's crosses the LAN, which is why it pins. If
+  Core ever moves off Irulan, pin it then, with
+  `services.komodo-periphery.auth.corePublicKeys` and the key from Core's
+  `/config/keys/core.pub`.
