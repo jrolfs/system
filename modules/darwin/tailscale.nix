@@ -241,7 +241,14 @@ let
 
           if [ "$desired" = Running ]; then
             log "away ($current), connecting"
-            if "$tailscale" up --timeout=30s; then
+            # `up` must stay bare, so the wait is bounded from outside rather
+            # than with --timeout. Any flag at all, --timeout included, makes the
+            # CLI treat the call as a settings change and refuse it unless every
+            # non-default pref is restated, and the GUI leaves some set
+            # (RouteAll, ExitNodeAllowLANAccess). A flagless `up` is the one form
+            # that only sets WantRunning. Killing it on timeout reverts nothing,
+            # the same as --timeout expiring.
+            if ${pkgs.coreutils}/bin/timeout 30 "$tailscale" up; then
               mark_converged "$current" "$now"
             else
               # Usually an uncleared captive portal. Deliberately left unconverged
