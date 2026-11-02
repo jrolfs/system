@@ -105,6 +105,8 @@
     activate = true;
     # Leia's Core was v2.1.2 when its database moved here, and a database
     # only migrates forward; 2.3.3 is also Irulan's periphery, from nixpkgs.
+    # Leia's periphery is pinned to match in rolfs.lan's
+    # leia/komodo/docker-compose.yml, so a bump here goes there too.
     imageTag = "2.3.3";
   };
 
