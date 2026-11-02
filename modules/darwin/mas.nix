@@ -27,6 +27,7 @@ let
     "Cloud Baby Monitor" = 517602535;
     "Fantastical" = 975937182;
     "Flighty" = 1358823008;
+    "Hue Party" = 630956426;
     "Velja" = 1607635845;
     "Xcode" = 497799835;
   };
