@@ -656,36 +656,16 @@ Checked on Irulan on 2026-11-02, after traefik-kop:
 - **`rolfs.home`**: all 19 names serve, each with its own certificate from
   "Rolfs LAN CA Intermediate CA". Traefik's open files stay flat (25), so no
   challenge is retrying.
-- **`rolfs.dev`**: all 19 names route, but behind Traefik's self-signed
-  default certificate. The wildcard can't be issued until Traefik has the
-  Vercel token (below).
+- **`rolfs.dev`**: all 19 names serve one Let's Encrypt wildcard
+  (`rolfs.dev`, `*.rolfs.dev`), issued 2026-11-02 over Vercel DNS-01 with
+  `irulan-edge`'s own token: the `Vercel DNS` item in the Secrets vault, synced
+  as the Komodo variable `VERCEL_API_TOKEN` and passed through the stack's
+  Environment. Leia's Traefik keeps its own token, so either can be revoked
+  alone.
 - **Backends**: everything answers as it does through `rolfs.casa` (Plex and
   NZBGet with 401 until signed in, Pi-hole at `/admin/`). Traefik has 22
   routers from the file provider and 8 from Redis, one per labelled container
   on Leia, each backed by `10.10.10.12` and its published port.
-
-#### Waiting on Jamie
-
-1. **The Vercel token.** Traefik reads it as `VERCEL_API_TOKEN`, which the
-   compose file defaults to empty so the stack could deploy without it.
-   1. In 1Password's **Secrets** vault, create an item named `Vercel DNS` with
-      the token in a field named `token`. Leia's Traefik already uses one, as
-      `VERCEL_API_TOKEN` in `leia/docker/traefik/traefik.secrets.env` in
-      Leia's Komodo clone, and it works here as long as `rolfs.dev` is in the
-      same Vercel account. Keep `/` out of the item name: `op://` references
-      split on it.
-   2. Add `VERCEL_API_TOKEN = "op://Secrets/Vercel DNS/token";` to
-      `komodo.secrets` in `hosts/irulan/default.nix`, and switch Irulan.
-      Don't add the line before the item exists: one unreadable reference fails
-      the whole sync.
-   3. In Komodo, set `irulan-edge`'s Environment to
-      `VERCEL_API_TOKEN=[[VERCEL_API_TOKEN]]` and deploy. Traefik requests the
-      wildcard as it starts. Once it has, `/srv/edge/acme/letsencrypt.json`
-      (root-only) lists one certificate and `rolfs.dev` stops showing
-      "TRAEFIK DEFAULT CERT".
-   4. Change `${VERCEL_API_TOKEN:-}` to `${VERCEL_API_TOKEN:?}` in
-      `irulan/edge/compose.yaml`, so a missing token fails the deploy instead
-      of starting a Traefik that can't renew.
 
 #### Toward one edge (decided 2026-11-02)
 
@@ -702,8 +682,8 @@ Traefik and step-ca stop once nothing points at them. In order:
    (`d885d46`, which also published Sonarr's, Radarr's and Unpackerr's ports
    and superseded `leia-publish-ports`). Their file-provider entries came out
    afterwards (`3adcfbf`). The three that returned 502 now answer.
-3. **The Vercel token** (above), for the `rolfs.dev` wildcard and later a
-   `rolfs.casa` one.
+3. **The Vercel token.** Done 2026-11-02; the same token will serve a
+   `rolfs.casa` wildcard.
 4. **`.casa` and `.lan` move to Irulan.** Irulan gets a `rolfs.casa` wildcard
    through Vercel and `rolfs.lan` routers from its step-ca copy, Leia's
    containers move their `.casa` and `.lan` routers under the `irulan.`
