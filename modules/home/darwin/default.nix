@@ -130,7 +130,9 @@ in
 
       alias icn="(cd ${configDirectory}/icons && sudo ./apply.sh)"
 
-      alias spoon="$(brew --prefix)/bin/hs"
+      # The copy inside the cask, as in wallpaper.nix. The $(brew --prefix)/bin/hs
+      # symlink is optional, and a non-login shell has no brew on PATH to ask.
+      alias spoon="/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs"
 
 
       #
