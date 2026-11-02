@@ -3,25 +3,40 @@
 # Shared NixOS configuration. Imported by every nixosConfiguration via
 # flake.nix's mkNixos. Host-specific bits live in hosts/<hostname>/.
 
+let
+  overlays = import ../../overlays inputs;
+in
 {
-  imports = [
-    ../shared
-    ./av.nix
-    ./bluetooth.nix
-    ./keyboard
-    ./onepassword-secrets.nix
-    ./sudo.nix
-  ];
+  imports = [ ../bootstrap.nix ../home-backup.nix ../packages.nix ];
+
+  # Same overlay the darwin side applies. Not darwin-specific: modules/home is
+  # shared by both platforms and reaches for overlay packages unconditionally
+  # (claude-helpers, zshcs), so without this a NixOS host doesn't evaluate at
+  # all. Packages in it that only make sense on macOS are lazy — nothing builds
+  # unless something references it.
+  nixpkgs.overlays = [ overlays ];
 
   system.stateVersion = "24.05";
 
-  # The settings both platforms share are in ../shared/nix.nix.
+  # Nix daemon settings — keep parity with the darwin module so
+  # `nix shell nixpkgs#foo` and `nix-shell -p foo` resolve the same way
+  # across mac and linux hosts.
+  nix.package = pkgs.lix;
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nix.settings.auto-optimise-store = true;
   nix.gc = {
     automatic = true;
     dates = "weekly";
     options = "--delete-older-than 14d";
   };
+
+  nix.registry.nixpkgs.flake = inputs.nixpkgs;
+  nix.nixPath = [
+    "nixpkgs=${inputs.nixpkgs}"
+  ];
+
+  nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.allowBroken = true;
 
   # Default user shell across NixOS hosts. Matches the darwin side so
   # the lifted-and-shifted .zshrc / .zshenv work without a chsh dance.
@@ -55,20 +70,6 @@
   time.timeZone = lib.mkDefault "America/Los_Angeles";
   i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
 
-  # The text console in Gruvbox Material Dark Soft, like everything else. The
-  # Linux console draws its background in color 0 and its default text in
-  # color 7, so those take the palette's surface and foreground, unlike a
-  # terminal emulator's ANSI slots, where 0 is a gray "black" for text.
-  console.colors =
-    let
-      p = (import ../theme/palette.nix).dark.soft;
-      hex = color: builtins.substring 1 6 color;
-    in
-    map hex [
-      p.bg0 p.red p.green p.yellow p.blue p.purple p.aqua p.fg0
-      p.grey1 p.red p.green p.yellow p.blue p.purple p.aqua p.fg1
-    ];
-
   # Console / terminal defaults — Linux equivalents of the macOS keyboard
   # behavior tweaks. Override in host file if it has a different layout.
   console.keyMap = lib.mkDefault "us";
@@ -77,7 +78,7 @@
   services.rpcbind.enable = true;
   boot.supportedFilesystems = [ "nfs" ];
 
-  # The cross-platform baseline is ../shared/packages.nix, imported above. These are
+  # The cross-platform baseline is ../packages.nix, imported above. These are
   # the ones that only make sense here: GNU coreutils is what a Linux system
   # already assumes, and adding it on darwin would shadow the BSD tools the
   # rest of that config is written against.

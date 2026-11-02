@@ -18,8 +18,7 @@ let
   # Compiled with the *system* Swift toolchain via xcrun: SidecarCore is an
   # Apple private framework that only exists in the macOS SDK, and the nix
   # sandbox is disabled on this host, so reaching the system toolchain here
-  # is consistent with how pkgs.rustTool builds this repo's other small tools
-  # straight from a compiler rather than through a package manager.
+  # is consistent with how icons.nix builds icon-setter.c with $CC.
   sidecar = pkgs.stdenv.mkDerivation {
     name = "sidecar";
     version = "1.0.0";

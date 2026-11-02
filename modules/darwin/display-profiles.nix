@@ -39,10 +39,10 @@ let
     "900p" = { kitty = 12; moomGap = 20; superhuman = -1; slack = -3; }; # slack inferred
     "1080p" = { kitty = 12; moomGap = 20; superhuman = -1; slack = -3; };
     "1440p" = { kitty = 14; moomGap = 23; superhuman = 0; slack = -2; }; # superhuman inferred
-    "13\" M1 Air" = { kitty = 12; moomGap = 12; superhuman = -1; slack = -2; }; # slack inferred
-    "13\" M1 Air ← iPad × Folio" = { kitty = 12; moomGap = 12; superhuman = 0; slack = -2; }; # slack inferred
-    "13\" M4 Air" = { kitty = 12; moomGap = 15; superhuman = 0; slack = -2; }; # slack inferred
-    "13\" M4 Air ← iPad × Stand" = { kitty = 12; moomGap = 15; superhuman = 0; slack = -2; };
+    "13\" M1 Air" = { kitty = 13; moomGap = 12; superhuman = -1; slack = -2; }; # slack inferred
+    "13\" M1 Air ← iPad × Folio" = { kitty = 13; moomGap = 12; superhuman = 0; slack = -2; }; # slack inferred
+    "13\" M4 Air" = { kitty = 13; moomGap = 15; superhuman = 0; slack = -2; }; # slack inferred
+    "13\" M4 Air ← iPad × Stand" = { kitty = 13; moomGap = 15; superhuman = 0; slack = -2; };
     "14\" Pro" = { kitty = 13; moomGap = 15; superhuman = 0; slack = -2; }; # slack inferred
     "1440 × 810, 1180 × 820" = { kitty = 13; moomGap = 12; superhuman = 0; slack = -2; }; # both inferred
 
@@ -113,13 +113,6 @@ let
         [[ "$level" -gt 0 ]] && direction="Zoom In"
 
         [[ -x "$hs" ]] || return 0
-
-        # Without -A the CLI answers a missing Hammerspoon with a modal "would
-        # you like to launch it" dialog, and Stay fires this at login, before
-        # the LaunchAgent has it up. -A is no better: it would launch a second
-        # copy alongside the one launchd is starting. Nothing is open to zoom
-        # at that point anyway.
-        pgrep -xq Hammerspoon || return 0
 
         # Delay between presses because Chromium debounces zoom changes; without
         # it a run of steps collapses into fewer than were asked for.

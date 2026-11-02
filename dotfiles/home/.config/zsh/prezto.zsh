@@ -6,6 +6,7 @@ zstyle ':prezto:load' pmodule \
   'history' \
   'directory' \
   'spectrum' \
+  'gpg' \
   'git' \
   'ruby' \
   'node' \

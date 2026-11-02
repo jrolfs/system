@@ -1,30 +1,4 @@
 {
-  "ssh_connections": [
-    {
-      "host": "ala.rolfs.lan",
-      "username": "jamie",
-      "args": [],
-      "projects": [
-        {
-          "paths": [
-            "/Users/jamie/Developer"
-          ]
-        },
-        {
-          "paths": [
-            "/Users/jamie/Developer/Sources/jrolfs/website/./"
-          ]
-        }
-      ],
-      "nickname": "Ala"
-    },
-    {
-      "host": "ala.rolfs.lan",
-      "username": "jamie",
-      "args": [],
-      "projects": []
-    }
-  ],
   "document_symbols": "on",
   "close_on_file_delete": false,
   "seed_search_query_from_cursor": "selection",
@@ -156,8 +130,7 @@
   "project_panel": {
     "entry_spacing": "standard",
     "dock": "left",
-    "show_diagnostics": "all",
-    "sort_order": "extension"
+    "show_diagnostics": "all"
   },
   "outline_panel": {
     "indent_size": 2.0,
@@ -167,12 +140,10 @@
     "dock": "right"
   },
   "agent": {
-    "threads_sidebar": {
-      "position": "right"
-    },
     "terminal_init_command": "",
     "play_sound_when_agent_done": "when_hidden",
     "show_turn_stats": true,
+    "sidebar_side": "right",
     "dock": "right",
     "favorite_models": [],
     "model_parameters": []
@@ -187,15 +158,8 @@
   },
   "semantic_tokens": "combined",
   "agent_servers": {
-    "OpenCode": {
-      "default_config_options": {
-        "effort": "high",
-        "model": "anthropic/claude-opus-5-5",
-        "mode": "build"
-      },
-      "type": "custom",
-      "command": "/run/current-system/sw/bin/opencode",
-      "args": ["acp"]
+    "opencode": {
+      "type": "registry"
     },
     "claude-acp": {
       "default_config_options": {
@@ -205,27 +169,18 @@
       "type": "registry"
     },
     "Claude Foundry": {
-      "favorite_config_option_values": {
-        "mode": [
-          "auto"
-        ]
-      },
       "type": "custom",
-      "command": "/etc/profiles/per-user/jamie/bin/claude-foundry-acp",
+      "command": "/bin/zsh",
+      "args": [
+        "-c",
+        "source ~/.config/zsh/init/keys.zsh && exec npx -y @agentclientprotocol/claude-agent-acp"
+      ],
       "default_config_options": {
-        "mode": "auto",
-        "effort": "xhigh"
+        "effort": "xhigh",
+        "mode": "auto"
       },
       "env": {
         "ANTHROPIC_MODEL": "claude-opus-5"
-      }
-    },
-    "Claude Platform": {
-      "type": "custom",
-      "command": "/etc/profiles/per-user/jamie/bin/claude-api-acp",
-      "default_config_options": {
-        "mode": "auto",
-        "effort": "xhigh"
       }
     }
   },
