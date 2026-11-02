@@ -95,16 +95,19 @@ hostname**: Leia's connects as `leia`, and Irulan's as `irulan`.
 
 - **Irulan is `10.10.10.9`**, a static mapping in Kea.
 - **`*.rolfs.casa` is one unbound redirect zone**, `local-zone: "rolfs.casa."
-  redirect` with the apex pointing at `10.10.10.12`, in kath's DNS Resolver
-  custom options. Every `.casa` name follows it, so a new `.casa` route needs
-  no DNS change. `rolfs.dev.` and `rolfs.home.` are two more zones of the same
-  shape, pointing at `10.10.10.9` (phase 6).
-- **`rolfs.lan` names are host-override aliases**, all on the `leia` override
-  because Traefik is there. A new `-lan` route needs its alias added, on
-  whichever host runs Traefik (not on the host running the backend).
-- **Meter's subnet reaches Leia through two NAT rules** on OPT1: 443 for
-  `rolfs.casa` and 32400 for Plex. Both are retargeted when what they point at
-  moves.
+  redirect` with the apex pointing at `10.10.10.9` since 2026-11-02 (Leia's
+  `10.10.10.12` before), in kath's DNS Resolver custom options. Every `.casa`
+  name follows it, so a new `.casa` route needs no DNS change. `rolfs.dev.`
+  and `rolfs.home.` are two more zones of the same shape, also pointing at
+  `10.10.10.9` (phase 6).
+- **`rolfs.lan` names are host-override aliases**, on the override of
+  whichever host runs the Traefik that serves them (not the host running the
+  backend). They're on `leia` until its Traefik retires (phase 6, step 4).
+  `rolfs.lan` can't be a redirect zone, because it also names every host.
+- **Meter's subnet reaches `rolfs.casa` and Plex through two NAT rules** on
+  OPT1, `198.51.100.1:443` and `:32400`, both still pointing at Leia. Both are
+  retargeted to Irulan when Meter's routing is picked up again; the 443 one is
+  what keeps Leia's Traefik running.
 
 ### Secrets
 
@@ -684,15 +687,39 @@ Traefik and step-ca stop once nothing points at them. In order:
    afterwards (`3adcfbf`). The three that returned 502 now answer.
 3. **The Vercel token.** Done 2026-11-02; the same token will serve a
    `rolfs.casa` wildcard.
-4. **`.casa` and `.lan` move to Irulan.** Irulan gets a `rolfs.casa` wildcard
-   through Vercel and `rolfs.lan` routers from its step-ca copy, Leia's
-   containers move their `.casa` and `.lan` routers under the `irulan.`
-   prefix, and kath's `rolfs.casa` zone and the `rolfs.lan` aliases point at
-   `10.10.10.9`. The aliases go first: a `step` router whose name still
-   resolves to Leia fails its challenge forever. Meter's NAT for 443 follows,
-   when Meter's routing is picked up again.
-5. **Leia's Traefik and step-ca stop**, after a soak, kept for rollback like
-   the rest.
+4. **`.casa` moves to Irulan.** Done 2026-11-02. Irulan serves all 19 names
+   from `rolfs-casa.yml` (rolfs.lan `dc964cd`) under a Let's Encrypt
+   `rolfs.casa` wildcard, and kath's zone apex points at `10.10.10.9`. Leia's
+   containers are reached through their `@redis` services, so Leia wasn't
+   redeployed. The wildcard's first attempt timed out, because the apex and
+   the wildcard each need a TXT record on `_acme-challenge.rolfs.casa` and
+   Vercel's nameservers were slow to serve the second; `irulan-edge` now gives
+   lego ten minutes (`a09a07e`). Leia's Traefik still serves `.casa` to Meter,
+   through the NAT, and to anything holding the old answer, whose TTL was a
+   day.
+5. **`.lan` moves when Leia's Traefik retires**, planned for 2026-11-03. It
+   can't move sooner: Leia's own `-lan` routers renew 24-hour step-ca
+   certificates daily, and once the aliases point at Irulan every renewal
+   would fail and retry forever. In order:
+   1. Point Meter's 443 NAT at `10.10.10.9`.
+   2. After about 12:45 PST, a day after the `.casa` change, stop Leia's
+      `traefik` and `step-ca` in Komodo. They stay in the compose file as the
+      rollback. This also ends `unpackerr-lan`'s failing challenge, a router
+      Leia has had with no alias behind it.
+   3. Move the aliases `nzb`, `traefik`, `tube`, `resilio`, `plex`, `home`,
+      `komodo`, `prowlarr`, `qui`, `radarr`, `sonarr`, `status` and `torrent`
+      from kath's `leia` override to `irulan`'s, and add `unpackerr`. `leia`
+      stays: it is Leia's own name, used for NFS and every backend URL. Its
+      HTTPS route to the QNAP interface retires with Leia's Traefik; `nas` and
+      `leia` under the other domains still reach it.
+   4. Merge rolfs.lan's `irulan-lan` branch, which holds `rolfs-lan.yml` with
+      the 14 routers, deploy `irulan-edge`, and check each name's certificate
+      and that Traefik's open files stay flat.
+6. **Afterwards**, Leia's containers can carry their `.casa` and `.lan`
+   routes in their `irulan.` labels instead of `rolfs-casa.yml` and
+   `rolfs-lan.yml`, and lose their unprefixed labels. That needs one more
+   `rolfs-casa` deploy and is cleanup, not a step anything waits on. Deleting
+   Leia's Traefik and step-ca waits for the usual soak.
 
 Rollback: stop `irulan-edge` in Komodo. Nothing else depends on it, and the two
 domains simply stop answering. Removing kath's `rolfs.dev.` and `rolfs.home.`
