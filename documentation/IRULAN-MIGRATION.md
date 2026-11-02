@@ -602,14 +602,30 @@ The stack is `irulan-edge` in Komodo, from rolfs.lan's `irulan/edge/`:
 - **Traefik** runs on Irulan's host network, which `hosts/irulan/default.nix`
   opens 80 and 443 for. Its dashboard is the `traefik` route rather than
   `:8080`, which nebula-sync already holds.
-- **Routes come only from the file provider**, in `traefik/dynamic/`:
-  `common.yml` holds the services, middlewares and the wildcard's default
-  certificate store, and `rolfs-dev.yml` and `rolfs-home.yml` hold one router
-  per name. The two router files have to match name for name. There is no
-  Docker provider at all: Traefik 3.3's Docker client asks for API 1.24,
-  which Irulan's Docker refuses (its minimum is 1.40). Irulan's own services
-  are reached on `127.0.0.1` (Pi-hole at `10.10.10.1`, through the `lan-shim`),
-  Leia's by `leia.rolfs.lan:<published port>`.
+- **Routes come from three providers.** The file provider, in
+  `traefik/dynamic/`, has everything that isn't a labelled container:
+  Irulan's native services on `127.0.0.1` (Pi-hole at `10.10.10.1`, through
+  the `lan-shim`), and the QNAP, kath and Resilio. `common.yml` holds the
+  services, middlewares and the wildcard's default certificate store, and
+  `rolfs-dev.yml` and `rolfs-home.yml` one router per name, matching name for
+  name. The Docker provider reads labels on Irulan's own containers; it was off
+  while Traefik was 3.3, whose Docker client asks for API 1.24, below Irulan's
+  minimum. The Redis provider carries Leia's containers (below).
+- **Leia's containers come through traefik-kop.** A Docker provider only sees
+  its own host, so `traefik-kop` on Leia reads the labels its containers carry
+  under an `irulan.` prefix and writes them into a Redis on Irulan
+  (`services.redis.servers.traefik-kop` in `hosts/irulan/default.nix`), with
+  Leia's address and each published port as the backend. Redis has no
+  password: Traefik's static configuration can't take one from the
+  environment, so the firewall admits Leia alone. Leia's own Traefik reads
+  only the unprefixed labels, which keeps its `.lan` step routers away from
+  Irulan, where their challenges would fail forever (below). One `irulan.`
+  router per service covers both domains, with `tls.domains` limiting the
+  step resolver to the `rolfs.home` name.
+- **A change to `traefik/traefik.yml` needs a restart**, not just a deploy:
+  Compose recreates a container only when the compose file changes, and the
+  static configuration is a mounted file. Restart the `traefik` service in
+  Komodo after deploying. Dynamic files are watched and apply on the pull.
 - **step-ca** is a copy of Leia's `step-ca-data` volume at
   `/srv/edge/step-ca`, taken with Leia's step-ca briefly stopped. Same root,
   same intermediate, same password, so anything that already trusts Leia's
@@ -669,19 +685,38 @@ Checked from the LAN on 2026-11-01:
    4. Change `${VERCEL_API_TOKEN:-}` to `${VERCEL_API_TOKEN:?}` in
       `irulan/edge/compose.yaml`, so a missing token fails the deploy instead
       of starting a Traefik that can't renew.
-2. **Deploy `leia-publish-ports`** (rolfs.lan), which publishes 8989, 7878
-   and 5656 for Sonarr, Radarr and Unpackerr. Leia's own Traefik keeps
-   routing them by label over the stack network, so nothing changes for
-   `rolfs.casa` or `rolfs.lan`. Merge it, Pull `rolfs-casa` in Komodo, and
-   deploy only those three services rather than the whole stack, so no other
-   container is recreated.
-3. **Decide which names live where.** Nothing needs to happen yet, and the
-   choices are independent: keep all four domains, move `.casa` and `.lan`
-   names onto Irulan's edge (by pointing the old zone and aliases at
-   `10.10.10.9` and adding routers), or retire the old domains. Leia's
-   Traefik and step-ca stop only once nothing points at them. Meter's subnet
-   reaches the new names only once its NAT covers Irulan, which is on hold
-   with the rest of Meter's routing.
+2. **The `rolfs-casa` deploy that starts traefik-kop** (rolfs.lan `d885d46`,
+   below). It recreates the eight labelled containers, for a few seconds each,
+   qBittorrent included.
+
+#### Toward one edge (decided 2026-11-02)
+
+Irulan's Traefik becomes the only one. No high-availability pair: failing
+over between hosts needs a shared address and synchronised certificates, and
+buys little when DNS, Home Assistant and Plex already live on Irulan. Leia's
+Traefik and step-ca stop once nothing points at them. In order:
+
+1. **Traefik 3.7 with the Docker provider.** Done 2026-11-02 (rolfs.lan
+   `cebbc08`). All 38 names answered as before.
+2. **traefik-kop.** Redis on Irulan and Traefik's Redis provider are live
+   (`54c9ded`). On Leia, `traefik-kop` and the `irulan.` labels on NZBGet,
+   TubeSync, Sonarr, Radarr, Prowlarr, qBittorrent, qui and Unpackerr are
+   committed (`d885d46`, which also publishes Sonarr's, Radarr's and
+   Unpackerr's ports and supersedes `leia-publish-ports`) and take effect with
+   the next `rolfs-casa` deploy. After that, their services and routers come
+   out of `irulan/edge/traefik/dynamic/`, since Redis now carries them. The
+   Redis routers win while both exist, because their two-host rules are longer.
+3. **The Vercel token** (above), for the `rolfs.dev` wildcard and later a
+   `rolfs.casa` one.
+4. **`.casa` and `.lan` move to Irulan.** Irulan gets a `rolfs.casa` wildcard
+   through Vercel and `rolfs.lan` routers from its step-ca copy, Leia's
+   containers move their `.casa` and `.lan` routers under the `irulan.`
+   prefix, and kath's `rolfs.casa` zone and the `rolfs.lan` aliases point at
+   `10.10.10.9`. The aliases go first: a `step` router whose name still
+   resolves to Leia fails its challenge forever. Meter's NAT for 443 follows,
+   when Meter's routing is picked up again.
+5. **Leia's Traefik and step-ca stop**, after a soak, kept for rollback like
+   the rest.
 
 Rollback: stop `irulan-edge` in Komodo. Nothing else depends on it, and the two
 domains simply stop answering. Removing kath's `rolfs.dev.` and `rolfs.home.`
