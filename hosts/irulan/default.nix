@@ -228,6 +228,40 @@
   # generated hardware-configuration.nix doesn't turn this on by itself.
   hardware.enableRedistributableFirmware = true;
 
+  # The only speakers are the receiver's, over HDMI. The sound card also has
+  # an analog line-out with nothing plugged in, but nothing tells PipeWire
+  # it's empty, and its card profiles rank analog above HDMI. Left alone,
+  # WirePlumber gives every user the analog profile, and since the card runs
+  # one profile at a time there is then no HDMI output to pick at all: the
+  # station played Sonic into the empty jack, with nothing in it to change
+  # that. These prefer whichever HDMI profile has the receiver behind it.
+  # Which of the four that is depends on the order displays connected in, so
+  # all four are listed, and only one is ever available. Analog comes back
+  # only while the receiver is off.
+  #
+  # The receiver is the volume control, so a route on this card nobody has
+  # set yet starts at full volume rather than WirePlumber's 0.064, about
+  # -24 dB that nothing in the station can raise.
+  services.pipewire.wireplumber.extraConfig.hdmi-receiver =
+    let
+      card = [{ "device.name" = "alsa_card.pci-0000_00_1f.3"; }];
+    in
+    {
+      "monitor.alsa.rules" = [{
+        matches = card;
+        actions.update-props."device.routes.default-sink-volume" = 1.0;
+      }];
+      "device.profile.priority.rules" = [{
+        matches = card;
+        actions.update-props.priorities = [
+          "output:hdmi-stereo"
+          "output:hdmi-stereo-extra1"
+          "output:hdmi-stereo-extra2"
+          "output:hdmi-stereo-extra3"
+        ];
+      }];
+    };
+
   # The Docker daemon Komodo deploys stacks to, through the periphery.
   virtualisation.docker.enable = true;
 
