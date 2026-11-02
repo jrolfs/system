@@ -56,6 +56,22 @@
   # container binds that way go through this firewall, unlike published ones.
   networking.firewall.allowedTCPPorts = [ 80 443 ];
 
+  # traefik-kop on Leia publishes its containers' Traefik labels here, and
+  # irulan-edge's Traefik reads them back as its Redis provider (phase 6).
+  # Bound everywhere because Leia has to reach it, and opened to Leia alone.
+  # No password: Traefik's static configuration can't take one from the
+  # environment, and the only client the firewall lets in is the host whose
+  # containers these routes lead to anyway.
+  services.redis.servers.traefik-kop = {
+    enable = true;
+    port = 6379;
+    bind = null;
+    settings.protected-mode = "no";
+  };
+  networking.firewall.extraCommands = ''
+    iptables -A nixos-fw -p tcp -s 10.10.10.12 --dport 6379 -j nixos-fw-accept
+  '';
+
   # Kuma's Matter monitor reaches the Matter server on this host from the
   # stack's bridge, which the compose file names br-monitoring. Only that
   # network gets the port: the Matter server's API is unauthenticated, so it
