@@ -132,6 +132,10 @@
     DHCP_PROBE_PUSH_URL = "op://Secrets/dhcp-probe/push url";
     # nebula-sync logs in to both Pi-holes with it (irulan-dns).
     PIHOLE_WEBPASSWORD = "op://Secrets/Pi-hole/password";
+    # irulan-edge's Traefik, for the DNS-01 challenges of the rolfs.dev
+    # wildcard (and rolfs.casa's, once it moves). Its own token, not Leia's
+    # Traefik's, so either can be revoked alone.
+    VERCEL_API_TOKEN = "op://Secrets/Vercel DNS/token";
   };
 
   # Home Assistant and the Matter server, moved here from Leia in phase 4 of
