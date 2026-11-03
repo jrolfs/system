@@ -46,7 +46,10 @@ require('modules.dock-spaces').start({
 -- modules/home/darwin/switch-panel.nix, which is where it is explained.
 require('modules.switch-panel')
 
-require('modules.touchid-focus').start()
+-- Off while finding out whether it helps at all: the Touch ID dialog still
+-- loses focus with it on. It only raises SecurityAgent as it launches, so the
+-- prompts coreautha shows for apps were never covered.
+-- require('modules.touchid-focus').start()
 
 local zed = require('modules.zed')
 
