@@ -6,7 +6,23 @@ local autoHideWatcher = nil
 local appsToHide = {}
 local lastHideTime = {}
 
+-- An app that lost focus to a Touch ID prompt, left visible until focus moves
+-- on from the prompt
+local heldForPrompt = nil
+
 local DEBOUNCE_INTERVAL = 1 -- Adjust this value (in seconds) as needed
+
+-- Touch ID prompts belong to these rather than to the app that asked:
+-- SecurityAgent for sudo and system authorizations, coreautha for apps using
+-- LocalAuthentication. Focus going to one is not the app being left.
+local AUTH_AGENTS = {
+  ["com.apple.SecurityAgent"] = true,
+  ["com.apple.LocalAuthentication.UIAgent"] = true,
+}
+
+local function isAuthAgent(app)
+  return app ~= nil and AUTH_AGENTS[app:bundleID()] == true
+end
 
 function M.maxDisplays(n)
   return function()
@@ -90,14 +106,42 @@ local function hide(app)
   end)
 end
 
+-- Read from what is frontmost once the transition settles, not from the event,
+-- so a prompt that closes and hands focus straight back counts as a return.
+local function settleHeld()
+  local held = heldForPrompt
+  if not held then return end
+
+  local frontmost = hs.application.frontmostApplication()
+  if isAuthAgent(frontmost) then return end
+
+  heldForPrompt = nil
+  if frontmost and frontmost:pid() == held:pid() then return end
+
+  if held:isRunning() then
+    hide(held)
+  end
+end
+
 local function createWatcher()
   -- Not `_`, which would shadow the utilities module in here.
   return hs.application.watcher.new(function(_name, eventType, appObject)
-    if eventType == hs.application.watcher.deactivated then
-      if appObject and shouldAutoHide(appObject:name()) then
+    if not appObject then return end
+
+    if eventType == hs.application.watcher.activated then
+      if heldForPrompt and not isAuthAgent(appObject) then
+        -- Small delay to ensure the focus transition has completed
+        hs.timer.doAfter(0.1, settleHeld)
+      end
+    elseif eventType == hs.application.watcher.deactivated then
+      if shouldAutoHide(appObject:name()) then
         -- Small delay to ensure the focus transition has completed
         hs.timer.doAfter(0.1, function()
-          hide(appObject)
+          if isAuthAgent(hs.application.frontmostApplication()) then
+            heldForPrompt = appObject
+          else
+            hide(appObject)
+          end
         end)
       end
     end
@@ -111,6 +155,7 @@ function M.start(apps)
 
   appsToHide = normalizeAll(apps)
   lastHideTime = {} -- Reset the hide times when starting
+  heldForPrompt = nil
 
   autoHideWatcher = createWatcher()
   autoHideWatcher:start()
@@ -122,6 +167,7 @@ function M.stop()
     autoHideWatcher = nil
   end
   lastHideTime = {} -- Clear the hide times when stopping
+  heldForPrompt = nil
 end
 
 function M.updateApps(apps)
