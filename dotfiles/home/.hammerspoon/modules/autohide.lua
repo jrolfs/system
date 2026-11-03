@@ -53,20 +53,21 @@ local function shouldAutoHide(appName)
   return false
 end
 
-local function hideApp(appName)
+-- System Events' "set visible" is this same Accessibility write, but it waits
+-- out the default six-second timeout on an app that has stopped answering, as
+-- one does while it quits, and Hammerspoon is blocked for all of it.
+local HIDE_TIMEOUT = 1
+
+local function hideApp(app)
   local frontmost = hs.application.frontmostApplication()
 
-  local script = string.format([[
-        tell application "System Events"
-            set visible of process "%s" to false
-        end tell
-    ]], appName)
-
-  local ok, _ = hs.osascript.applescript(script)
+  local element = hs.axuielement.applicationElement(app)
+  local ok = element ~= nil
+    and element:setTimeout(HIDE_TIMEOUT):setAttributeValue("AXHidden", true) ~= nil
 
   -- Record the hide time if successful
   if ok then
-    lastHideTime[string.lower(appName)] = hs.timer.secondsSinceEpoch()
+    lastHideTime[string.lower(app:name())] = hs.timer.secondsSinceEpoch()
   end
 
   -- Ensure focus returns to the app we switched to
@@ -77,16 +78,26 @@ local function hideApp(appName)
   return ok
 end
 
+local function hide(app)
+  if hideApp(app) then return end
+
+  -- Quitting deactivates an app before it exits, so a hide that fails is
+  -- usually an app on its way out rather than one refusing to hide.
+  hs.timer.doAfter(2, function()
+    if app:isRunning() then
+      _.alert("Failed to hide " .. app:name())
+    end
+  end)
+end
+
 local function createWatcher()
-  return hs.application.watcher.new(function(_, eventType, appObject)
+  -- Not `_`, which would shadow the utilities module in here.
+  return hs.application.watcher.new(function(_name, eventType, appObject)
     if eventType == hs.application.watcher.deactivated then
       if appObject and shouldAutoHide(appObject:name()) then
         -- Small delay to ensure the focus transition has completed
         hs.timer.doAfter(0.1, function()
-          local success = hideApp(appObject:name())
-          if not success then
-            _.alert("Failed to hide " .. appObject:name())
-          end
+          hide(appObject)
         end)
       end
     end
