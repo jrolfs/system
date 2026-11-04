@@ -1,8 +1,8 @@
 { config, lib, pkgs, ... }:
 
-# arcade-scrape: box art, screenshots, videos and descriptions for the
-# station's games, from ScreenScraper through Skyscraper, written as Pegasus
-# metadata next to the ROMs.
+# arcade-scrape: box art, screenshots and descriptions for the station's
+# games, from ScreenScraper through Skyscraper, written as Pegasus metadata
+# next to the ROMs.
 #
 # ScreenScraper works without an account but slowly, one thread and a short
 # daily quota, so the account's credentials come from 1Password at run time:
@@ -19,11 +19,15 @@ let
   cfg = config.arcade;
   systems = import ./systems.nix;
 
+  # No videos. The menu doesn't play them, and they would be most of a
+  # scrape's download time against ScreenScraper's one-thread limit, and
+  # gigabytes on disk. Off is Skyscraper's default; it's written out so that
+  # turning it back on is a deliberate choice for a theme that can show them.
   settings = pkgs.writeText "skyscraper.ini" ''
     [main]
     inputFolder="${cfg.root}/roms"
     gameListFolder="${cfg.root}/roms"
-    videos="true"
+    videos="false"
     unattend="true"
     verbosity="1"
   '';
