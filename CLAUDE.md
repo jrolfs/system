@@ -83,7 +83,7 @@ modules/
     shared/          every machine
     darwin/          macOS only
     linux/           Linux only, including the Hyprland desktop
-  theme/           palette and fonts, read by both platforms
+  theme/           palette, fonts and the shell's style values, read by both platforms
 hosts/             per-host overrides: ala, adrian, irulan (+ irulan/disko.nix)
 dotfiles/home/     the dotfile tree, linked into $HOME by modules/home
 documentation/     the companion docs listed below

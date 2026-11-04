@@ -12,6 +12,7 @@
 
 let
   fonts = import ../../../../theme/fonts.nix;
+  style = import ../../../../theme/style.nix;
   look = import ../look.nix;
 
   wallpapers = ../../../../../media/wallpapers;
@@ -65,7 +66,11 @@ let
   # the window's writes fail, and a file written once would let the window's
   # changes outlive the declaration. Keys left out here take the defaults in
   # config/Config.qml.
-  settings = {
+  #
+  # The radii, glass, motion and the rest of style.nix go in whole, since the
+  # station's Pegasus theme reads the same file and the two should only differ
+  # by someone choosing to.
+  settings = style // {
     fontBody = fonts.sans.family;
     fontDisplay = fonts.sans.family;
 
