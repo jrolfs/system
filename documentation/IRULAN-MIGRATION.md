@@ -100,10 +100,11 @@ hostname**: Leia's connects as `leia`, and Irulan's as `irulan`.
   name follows it, so a new `.casa` route needs no DNS change. `rolfs.dev.`
   and `rolfs.home.` are two more zones of the same shape, also pointing at
   `10.10.10.9` (phase 6).
-- **`rolfs.lan` names are host-override aliases**, on the override of
-  whichever host runs the Traefik that serves them (not the host running the
-  backend). They're on `leia` until its Traefik retires (phase 6, step 4).
-  `rolfs.lan` can't be a redirect zone, because it also names every host.
+- **`rolfs.lan` service names are `local-data` lines** in the same custom
+  options, one per name, all pointing at Irulan's Traefik since 2026-11-04.
+  They replaced the aliases on kath's `leia` host override. `rolfs.lan` can't
+  be a redirect zone, because it also names every host, so a new `-lan` route
+  needs its line added before its router exists.
 - **Meter's subnet reaches `rolfs.casa` and Plex through two NAT rules** on
   OPT1, `198.51.100.1:443` and `:32400`, both still pointing at Leia. Both are
   retargeted to Irulan when Meter's routing is picked up again; the 443 one is
@@ -172,8 +173,8 @@ holds the value and flags old ones in Watchtower.
 | Home Assistant | Leia stack, macvlan `.2` | Irulan, native (`modules/nixos/services/home-assistant/`), keeping `.2` as a second address | 4 | `/share/Docker/Containers/home-assistant/config` |
 | Matter server | Leia stack, host network | Irulan, native (`services.matter-server`) | 4 | `/share/Docker/Containers/matter/data` (the fabric credentials) |
 | Pi-hole | Leia stack, macvlan `.1` | Irulan, stack `irulan-dns` | 5 | `/share/Docker/Containers/pihole/config`; MAC `02:42:a0:a0:e4:fd` |
-| Traefik | Leia stack | a second one on Irulan (stack `irulan-edge`) for `rolfs.dev` and `rolfs.home`, beside Leia's | 6 (live) | none, since Irulan's requests its own certificates |
-| step-ca | Leia stack | a copy on Irulan (stack `irulan-edge`), beside Leia's | 6 (live) | copied: the `step-ca-data` volume, which is the CA itself |
+| Traefik | Leia stack (retired 2026-11-04, behind the `retired-edge` profile) | Irulan, stack `irulan-edge`, serving all four domains | 6 (done) | none, since Irulan's requests its own certificates |
+| step-ca | Leia stack (retired with Traefik) | a copy on Irulan, stack `irulan-edge` | 6 (done) | copied: the `step-ca-data` volume, which is the CA itself |
 | Komodo Core and Mongo | Leia, own Compose project | Irulan, `komodo.core.enable` | 7, ahead of the others | Mongo database, `/config/keys` (Core's key pair) |
 | Download stack | Leia stack | stays | n/a | n/a |
 | TubeSync | Leia stack | stays | n/a | writes `/share/Media/YouTube`, so it belongs with the downloaders |
@@ -697,29 +698,26 @@ Traefik and step-ca stop once nothing points at them. In order:
    lego ten minutes (`a09a07e`). Leia's Traefik still serves `.casa` to Meter,
    through the NAT, and to anything holding the old answer, whose TTL was a
    day.
-5. **`.lan` moves when Leia's Traefik retires**, planned for 2026-11-03. It
-   can't move sooner: Leia's own `-lan` routers renew 24-hour step-ca
-   certificates daily, and once the aliases point at Irulan every renewal
-   would fail and retry forever. In order:
-   1. Point Meter's 443 NAT at `10.10.10.9`.
-   2. After about 12:45 PST, a day after the `.casa` change, stop Leia's
-      `traefik` and `step-ca` in Komodo. They stay in the compose file as the
-      rollback. This also ends `unpackerr-lan`'s failing challenge, a router
-      Leia has had with no alias behind it.
-   3. Move the aliases `nzb`, `traefik`, `tube`, `resilio`, `plex`, `home`,
-      `komodo`, `prowlarr`, `qui`, `radarr`, `sonarr`, `status` and `torrent`
-      from kath's `leia` override to `irulan`'s, and add `unpackerr`. `leia`
-      stays: it is Leia's own name, used for NFS and every backend URL. Its
-      HTTPS route to the QNAP interface retires with Leia's Traefik; `nas` and
-      `leia` under the other domains still reach it.
-   4. Merge rolfs.lan's `irulan-lan` branch, which holds `rolfs-lan.yml` with
-      the 14 routers, deploy `irulan-edge`, and check each name's certificate
-      and that Traefik's open files stay flat.
+5. **`.lan` moves, and Leia's Traefik retires.** Done 2026-11-04. It
+   couldn't move sooner: Leia's own `-lan` routers renewed 24-hour step-ca
+   certificates daily, and once the names pointed at Irulan every renewal
+   would have failed and retried forever. So Leia's `traefik` and `step-ca`
+   stopped first, then moved behind a `retired-edge` profile so no deploy
+   starts them again (rolfs.lan `03658b7`); the compose file says how to bring
+   them back. That also ended `unpackerr-lan`'s failing challenge, a router
+   Leia had with no alias behind it. The 14 names became `local-data` lines
+   in kath's custom options instead of aliases on the `leia` host override,
+   one text block that `kath/network.md` records verbatim. Then the
+   `irulan-lan` routers merged (`45d9044`), and every name served its own
+   step-ca certificate at once. `leia.rolfs.lan` stays Leia's host name; its
+   HTTPS route to the QNAP interface retired with Leia's Traefik, and `nas`
+   and `leia` under the other three domains still reach it.
 6. **Afterwards**, Leia's containers can carry their `.casa` and `.lan`
    routes in their `irulan.` labels instead of `rolfs-casa.yml` and
    `rolfs-lan.yml`, and lose their unprefixed labels. That needs one more
    `rolfs-casa` deploy and is cleanup, not a step anything waits on. Deleting
-   Leia's Traefik and step-ca waits for the usual soak.
+   Leia's Traefik, step-ca and the `step-ca-data` volume waits for the usual
+   soak, and for Meter's NAT to point at Irulan.
 
 Rollback: stop `irulan-edge` in Komodo. Nothing else depends on it, and the two
 domains simply stop answering. Removing kath's `rolfs.dev.` and `rolfs.home.`
