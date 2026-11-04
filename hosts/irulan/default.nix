@@ -175,6 +175,10 @@
   av = {
     enable = true;
     entity = "media_player.living_room_living_room_smart";
+    # Only by hand for now. Turning the TV on with the desktop and station
+    # fought the Apple TV turning everything off, and waking the Frame from
+    # fully off (Wake-on-LAN) is parked on the living-room-wake branch.
+    autoOn = false;
   };
 
   # Boots to the text console until the desktop's first-boot crash is fixed.

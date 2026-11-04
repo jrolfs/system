@@ -13,7 +13,7 @@
 #
 #   av on | off | status   by hand, from any shell
 #   on                     when the login screen or the station starts, and
-#                          after a resume if either is running
+#                          after a resume if either is running (`autoOn`)
 #   off                    before suspend and at power-off (a reboot leaves
 #                          the TV alone, since the machine is coming back)
 
@@ -89,6 +89,16 @@ in
       type = types.str;
       description = "The media_player entity whose turn_on and turn_off switch the TV.";
     };
+
+    autoOn = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Whether the login screen or the station starting, or a resume, turns
+        the TV on. Off leaves `av on` to be run by hand; turning off with the
+        machine is unaffected.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -108,8 +118,6 @@ in
     environment.systemPackages = [ av ];
 
     systemd.services = {
-      greetd.serviceConfig.ExecStartPre = [ (quietly "on") ];
-
       av-before-sleep = {
         description = "Turn the TV off before sleeping";
         wantedBy = [ "sleep.target" ];
@@ -118,18 +126,6 @@ in
           Type = "oneshot";
           ExecStart = quietly "off";
         };
-      };
-
-      av-after-resume = {
-        description = "Turn the TV back on after a resume, if something's on screen";
-        wantedBy = [ "suspend.target" "hibernate.target" "hybrid-sleep.target" "suspend-then-hibernate.target" ];
-        after = [ "suspend.target" "hibernate.target" "hybrid-sleep.target" "suspend-then-hibernate.target" ];
-        script = ''
-          if systemctl is-active --quiet greetd.service arcade-station.service; then
-            ${pkgs.coreutils}/bin/timeout 20 ${avBin} on || true
-          fi
-        '';
-        serviceConfig.Type = "oneshot";
       };
 
       # Does nothing when started. Its stop is the hook: systemd stops it on
@@ -155,8 +151,22 @@ in
           ${pkgs.coreutils}/bin/timeout 20 ${avBin} off || true
         '';
       };
+    } // lib.optionalAttrs cfg.autoOn ({
+      greetd.serviceConfig.ExecStartPre = [ (quietly "on") ];
+
+      av-after-resume = {
+        description = "Turn the TV back on after a resume, if something's on screen";
+        wantedBy = [ "suspend.target" "hibernate.target" "hybrid-sleep.target" "suspend-then-hibernate.target" ];
+        after = [ "suspend.target" "hibernate.target" "hybrid-sleep.target" "suspend-then-hibernate.target" ];
+        script = ''
+          if systemctl is-active --quiet greetd.service arcade-station.service; then
+            ${pkgs.coreutils}/bin/timeout 20 ${avBin} on || true
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
     } // lib.optionalAttrs (config.arcade.enable or false) {
       arcade-station.serviceConfig.ExecStartPre = [ ("+" + quietly "on") ];
-    };
+    });
   };
 }

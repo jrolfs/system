@@ -21,6 +21,9 @@ let
     runtimeInputs = [ pkgs.kbd config.systemd.package pkgs.coreutils ];
     text = ''
       station() {
+        # A station that hit its start limit refuses a plain start until the
+        # limit's minute is up; asking for it by hand should always work.
+        systemctl reset-failed arcade-station.service 2>/dev/null || true
         systemctl start arcade-station.service
         chvt ${vt}
       }

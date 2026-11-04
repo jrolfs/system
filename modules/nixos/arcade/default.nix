@@ -145,7 +145,17 @@ in
       wants = [ "dbus.socket" "systemd-logind.service" ];
       conflicts = [ "getty@tty${toString cfg.vt}.service" ];
 
-      unitConfig.ConditionPathExists = "/dev/tty${toString cfg.vt}";
+      unitConfig = {
+        ConditionPathExists = "/dev/tty${toString cfg.vt}";
+        # Restart = "always" (below) on its own retries a crash that recurs
+        # forever. On 2026-11-04 that was about 150 restarts in seven minutes,
+        # each turning the TV back on through `av on`: Pegasus died when a
+        # DualSense reconnected, and every restart came up on a background VT
+        # with no input devices, which gamescope won't start without. So five
+        # tries a minute, then it stays down until `station`.
+        StartLimitIntervalSec = 60;
+        StartLimitBurst = 5;
+      };
 
       environment = {
         # Read by pam_systemd for the logind session's type.
