@@ -1,0 +1,57 @@
+# Irulan on the living room TV, from whatever state the TV and receiver are in.
+# `av on` (modules/nixos/av.nix) starts this when the desktop, the game menu or
+# a resume wants the screen, and returns straight away: all of it takes about
+# twenty seconds, too long to hold up a session starting.
+#
+# Irulan and the Apple TV both plug into the Denon, which has no network, and
+# Irulan has no CEC to ask it with (its HDMI port comes off the GPU with no CEC
+# line). So the picture is got in three steps:
+#
+#   1. Wake-on-LAN. Fully off, the Frame closes its control API, so Home
+#      Assistant's turn_on has nothing to talk to, but its network chip stays
+#      up to answer a magic packet. In art mode it's awake already, and the
+#      packet changes nothing.
+#   2. turn_on, which takes the Frame out of art mode once it answers.
+#   3. The Denon's input button for Irulan, through the Broadlink. Waking the
+#      TV wakes the Apple TV over CEC, and it claims the receiver's input a few
+#      seconds later. A button press is the one thing that overrides that, and
+#      it wakes the Denon too if it's still asleep. Sent twice, so the second
+#      lands after the Apple TV's grab whenever that comes.
+#
+# The button's code is learned rather than declared: it lives in Home
+# Assistant's storage as device `denon`, command `irulan`. To learn it again,
+# run remote.learn_command on remote.living_room_blaster with those names and
+# press the button at the Broadlink within 30 seconds.
+
+script:
+  irulan_on_tv:
+    alias: Living Room / Show Irulan
+    mode: restart
+    sequence:
+      - action: wake_on_lan.send_magic_packet
+        data:
+          mac: "10:2b:41:6f:9c:c4"
+      # It answers within a few seconds and Home Assistant notices on its next
+      # poll. Past this it was on already, or isn't coming.
+      - wait_template: "{{ is_state('media_player.living_room_living_room_smart', 'on') }}"
+        timeout: 20
+        continue_on_timeout: true
+      - action: media_player.turn_on
+        target:
+          entity_id: media_player.living_room_living_room_smart
+      - delay: 6
+      # A Broadlink that missed one send still gets the second.
+      - action: remote.send_command
+        continue_on_error: true
+        target:
+          entity_id: remote.living_room_blaster
+        data:
+          device: denon
+          command: irulan
+      - delay: 8
+      - action: remote.send_command
+        target:
+          entity_id: remote.living_room_blaster
+        data:
+          device: denon
+          command: irulan

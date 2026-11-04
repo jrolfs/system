@@ -175,6 +175,9 @@
   av = {
     enable = true;
     entity = "media_player.living_room_living_room_smart";
+    # Wakes the Frame from fully off and takes the Denon's input back from
+    # the Apple TV (home-assistant/packages/living_room.yaml).
+    script = "script.irulan_on_tv";
   };
 
   # Boots to the text console until the desktop's first-boot crash is fixed.

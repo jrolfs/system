@@ -8,6 +8,11 @@
 # receiver follows the TV over their own CEC link (ARC and the Denon's HDMI
 # Control). So `av` asks Home Assistant, and everything else follows.
 #
+# Turning on takes more than the TV's turn_on when the Frame is fully off or
+# the Apple TV beside Irulan grabs the receiver, so with `av.script` set, `on`
+# starts that Home Assistant script instead and returns at once. Irulan's is
+# in services/home-assistant/packages/living_room.yaml.
+#
 # All of it is system-level, so it behaves the same at the text console, at
 # the login screen and in the arcade station:
 #
@@ -29,6 +34,7 @@ let
     text = ''
       urls=(${lib.escapeShellArgs cfg.homeAssistant})
       entity=${lib.escapeShellArg cfg.entity}
+      script=${lib.escapeShellArg (if cfg.script == null then "" else cfg.script)}
 
       if [ ! -r ${lib.escapeShellArg token} ]; then
         echo "av: can't read the Home Assistant token at ${token}" >&2
@@ -52,8 +58,20 @@ let
         request -o /dev/null -H "Content-Type: application/json" -d "{\"entity_id\": \"$entity\"}"
       }
 
+      # script.turn_on returns as soon as the script has started.
+      start() {
+        path="/api/services/script/turn_on"
+        request -o /dev/null -H "Content-Type: application/json" -d "{\"entity_id\": \"$script\"}"
+      }
+
       case "''${1:-}" in
-        on) service turn_on ;;
+        on)
+          if [ -n "$script" ]; then
+            start
+          else
+            service turn_on
+          fi
+          ;;
         off) service turn_off ;;
         status)
           path="/api/states/$entity"
@@ -88,6 +106,16 @@ in
     entity = mkOption {
       type = types.str;
       description = "The media_player entity whose turn_on and turn_off switch the TV.";
+    };
+
+    script = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "script.irulan_on_tv";
+      description = ''
+        A Home Assistant script that `av on` starts in place of the entity's
+        turn_on, for whatever else getting Irulan's picture on screen takes.
+      '';
     };
   };
 
