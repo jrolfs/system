@@ -596,10 +596,12 @@ working side by side, which names end up on which domain is decided later.
 | `rolfs.dev` | one Let's Encrypt wildcard (`rolfs.dev`, `*.rolfs.dev`), DNS-01 through Vercel | redirect zone on kath, apex `10.10.10.9` |
 | `rolfs.home` | one per name, 24 hours each, from a copy of Leia's step-ca | redirect zone on kath, apex `10.10.10.9` |
 
-Names are flat and the same on both domains: `nas`, `leia`, `kath`, `home`,
-`portainer`, `pi`, `plex`, `resilio`, `status`, `komodo`, `traefik`, `nzb`,
-`tube`, `sonarr`, `radarr`, `prowlarr`, `torrent`, `qui` and `unpackerr`, so
-`plex.rolfs.dev` and `plex.rolfs.home` reach the same server.
+Names are flat and the same on `rolfs.casa`, `rolfs.dev` and `rolfs.home`:
+`nas`, `leia`, `kath`, `home`, `portainer`, `pi`, `pi-leia` (the secondary
+Pi-hole, added 2026-11-04), `plex`, `resilio`, `status`, `komodo`, `traefik`,
+`nzb`, `tube`, `sonarr`, `radarr`, `prowlarr`, `torrent`, `qui` and
+`unpackerr`, so `plex.rolfs.dev` and `plex.rolfs.home` reach the same server.
+`rolfs.lan` has the 14 of them that kath lists.
 
 The stack is `irulan-edge` in Komodo, from rolfs.lan's `irulan/edge/`:
 
