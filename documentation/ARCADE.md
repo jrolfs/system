@@ -76,7 +76,7 @@ Put these in `/srv/arcade/bios`, named exactly as shown.
 | Game Boy Advance | `gba_bios.bin` | No; mGBA emulates it |
 | Game Boy / Color | `gb_bios.bin`, `gbc_bios.bin` | No; only for the boot logo |
 
-## Box art, videos and descriptions
+## Box art and descriptions
 
 ```sh
 arcade-scrape            # every system with games in it
@@ -88,6 +88,9 @@ system's `metadata.pegasus.txt` and `media/` beside its games. Pegasus picks
 the results up on its next start (`systemctl restart arcade-station`, or quit
 Pegasus from its menu). Skyscraper's cache is in `~/.skyscraper`, so a rescrape
 after adding games only fetches the new ones.
+
+It doesn't fetch videos. The menu doesn't play them, and they would make up
+most of a scrape's time and disk; `scrape.nix` says where to turn them on.
 
 It reads a ScreenScraper account from 1Password at run time, through the
 service account token in `~/.config/op/service-account-token`. Create this item
