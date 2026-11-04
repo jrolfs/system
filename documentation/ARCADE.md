@@ -147,13 +147,47 @@ runs:
 sudo -u arcade XDG_RUNTIME_DIR=/run/user/$(id -u arcade) wpctl status
 ```
 
-## The theme
+## The menu
 
-Pegasus's default theme, pegasus-theme-grid, recolored from
-`modules/theme/palette.nix` and set in Geist from `modules/theme/fonts.nix`.
-Its corner radius and opacities sit in one generated `Style.qml`, from the
-`style` set in `modules/nixos/arcade/pegasus.nix`. The theme has no monospace
-text, so JetBrains Mono has nowhere to go.
+The station's own Pegasus theme, `modules/nixos/arcade/theme/`, laid out like
+the desktop shell's launcher: one glass card over the blurred wallpaper,
+systems as capsules across the top, games as rows on the left, and the
+selected game large on the right. A game with no art yet shows its initials
+on a tile in its system's colour. Recent and Favorites appear as tabs once
+they have anything in them.
+
+| Button | Does |
+|---|---|
+| ↑ ↓ | Move through the games |
+| ← → or L1 R1 | Previous or next system |
+| L2 R2 | Back or forward a letter |
+| ✕ | Play |
+| △ | Favorite, or unfavorite |
+| Start | Pegasus's own menu |
+
+Its colours, fonts, corner radii, glass, spacing and springs come from
+`modules/theme/palette.nix`, `fonts.nix` and `style.nix`, the same files the
+desktop shell reads, so a change there reaches both. Only the station's own
+choices sit in `theme/package.nix`: everything a quarter larger for the couch,
+and how hard the backdrop is blurred.
+
+gamescope blurs nothing, unlike Hyprland behind the shell, so the theme blurs
+its own backdrop and each pane samples that by screen position. Anything that
+sets `layer.enabled` above a pane breaks the lineup, which `ui/Pane.qml`
+notes.
+
+To try a change without switching, build the theme on its own and point a
+throwaway Pegasus at it, inside a headless `cage` so nothing touches the TV:
+
+```sh
+nix build --impure --expr \
+  '(import <nixpkgs> {}).callPackage ./modules/nixos/arcade/theme/package.nix {}'
+```
+
+Pegasus only loads a theme it finds under a `themes/` directory of its config,
+named in `settings.txt` as `general.theme: themes/<name>/`, not by an
+absolute path. Given anything else it falls back to its built-in grid theme
+without saying why.
 
 ## First run on the machine
 
