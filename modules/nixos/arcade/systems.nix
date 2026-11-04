@@ -4,8 +4,9 @@
 # Skyscraper platforms arcade-scrape works through.
 #
 # Attribute names are Skyscraper's platform ids, so the scraper, the directory
-# under roms/ and the theme's logo (assets/logos/<shortname>.svg) all agree
-# without a mapping table. `core` names a package in pkgs.libretro.
+# under roms/ and the collection's shortname all agree without a mapping table.
+# `name` is the collection's full name, `label` the shorter one on the game
+# menu's system tabs, and `core` names a package in pkgs.libretro.
 #
 # Cores, where there was a choice:
 #   megadrive and friends  genesis-plus-gx: the accurate Sega core, and the one
@@ -25,66 +26,77 @@
 {
   megadrive = {
     name = "Sega Genesis";
+    label = "Genesis";
     core = "genesis-plus-gx";
     extensions = [ "md" "gen" "smd" "bin" "zip" "7z" ];
   };
 
   mastersystem = {
     name = "Sega Master System";
+    label = "Master System";
     core = "genesis-plus-gx";
     extensions = [ "sms" "zip" "7z" ];
   };
 
   gamegear = {
     name = "Sega Game Gear";
+    label = "Game Gear";
     core = "genesis-plus-gx";
     extensions = [ "gg" "zip" "7z" ];
   };
 
   segacd = {
     name = "Sega CD";
+    label = "Sega CD";
     core = "genesis-plus-gx";
     extensions = [ "chd" "cue" "iso" "m3u" ];
   };
 
   nes = {
     name = "Nintendo Entertainment System";
+    label = "NES";
     core = "mesen";
     extensions = [ "nes" "fds" "zip" "7z" ];
   };
 
   snes = {
     name = "Super Nintendo";
+    label = "SNES";
     core = "snes9x";
     extensions = [ "sfc" "smc" "zip" "7z" ];
   };
 
   n64 = {
     name = "Nintendo 64";
+    label = "N64";
     core = "mupen64plus";
     extensions = [ "n64" "z64" "v64" "zip" "7z" ];
   };
 
   gb = {
     name = "Game Boy";
+    label = "Game Boy";
     core = "mgba";
     extensions = [ "gb" "zip" ];
   };
 
   gbc = {
     name = "Game Boy Color";
+    label = "Game Boy Color";
     core = "mgba";
     extensions = [ "gbc" "zip" ];
   };
 
   gba = {
     name = "Game Boy Advance";
+    label = "GBA";
     core = "mgba";
     extensions = [ "gba" "zip" ];
   };
 
   psx = {
     name = "PlayStation";
+    label = "PlayStation";
     core = "swanstation";
     extensions = [ "chd" "cue" "pbp" "m3u" ];
   };

@@ -1,0 +1,13 @@
+singleton Theme 1.0 Theme.qml
+Art 1.0 Art.qml
+Backdrop 1.0 Backdrop.qml
+Chip 1.0 Chip.qml
+GameRow 1.0 GameRow.qml
+Glyph 1.0 Glyph.qml
+Hint 1.0 Hint.qml
+Keycap 1.0 Keycap.qml
+Label 1.0 Label.qml
+Monogram 1.0 Monogram.qml
+Pane 1.0 Pane.qml
+Preview 1.0 Preview.qml
+Tabs 1.0 Tabs.qml
