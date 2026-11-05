@@ -16,6 +16,8 @@
 #                          after a resume if either is running
 #   off                    before suspend and at power-off (a reboot leaves
 #                          the TV alone, since the machine is coming back)
+#
+# The last two only with `av.automatic`.
 
 let
   inherit (lib) mkEnableOption mkOption types;
@@ -89,6 +91,12 @@ in
       type = types.str;
       description = "The media_player entity whose turn_on and turn_off switch the TV.";
     };
+
+    automatic = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Switch the TV with the sessions, suspend and power-off, rather than only by hand.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -107,7 +115,7 @@ in
 
     environment.systemPackages = [ av ];
 
-    systemd.services = {
+    systemd.services = lib.mkIf cfg.automatic ({
       greetd.serviceConfig.ExecStartPre = [ (quietly "on") ];
 
       av-before-sleep = {
@@ -157,6 +165,6 @@ in
       };
     } // lib.optionalAttrs (config.arcade.enable or false) {
       arcade-station.serviceConfig.ExecStartPre = [ ("+" + quietly "on") ];
-    };
+    });
   };
 }
