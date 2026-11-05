@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # opencode, set up the way Claude Code is: settings generated here, MCP servers
 # shared through programs.mcp (mcp.nix), and the binary installed system-wide by
@@ -38,13 +43,17 @@
 #   machine (sign in through `/mcps`).
 
 let
-  localPlugin = name: source: pkgs.runCommandLocal name {
-      nativeBuildInputs = [ pkgs.nodejs ];
-    } ''
-      cp ${source}/*.ts .
-      node --test index.test.ts
-      install -Dm644 index.ts $out/index.ts
-    '';
+  localPlugin =
+    name: source:
+    pkgs.runCommandLocal name
+      {
+        nativeBuildInputs = [ pkgs.nodejs ];
+      }
+      ''
+        cp ${source}/*.ts .
+        node --test index.test.ts
+        install -Dm644 index.ts $out/index.ts
+      '';
 
   syncPlugin = localPlugin "opencode-claude-sync" ./opencode-sync;
   routingPlugin = localPlugin "opencode-task-router" ./opencode-router;
@@ -78,7 +87,9 @@ let
       baseURL = "https://{file:${files.foundry-resource}}.services.ai.azure.com/anthropic/v1";
       apiKey = "{file:${files.foundry-api-key}}";
     };
-    models = lib.genAttrs [ "claude-opus-5-5" "claude-opus-5" "claude-haiku-4-5" ] (id: { modelID = id; });
+    models = lib.genAttrs [ "claude-opus-5-5" "claude-opus-5" "claude-haiku-4-5" ] (id: {
+      modelID = id;
+    });
   };
 
   # The auto-mode review pipeline, cheapest first. Each stage either decides
@@ -98,19 +109,24 @@ let
   #   personal Anthropic key, or Opus 5.5 through Foundry, which has no
   #   Sonnet. Pinned rather than following the session's model, so the judge
   #   stays the same whichever model is doing the work.
-  reviewers =
-    [ { type = "static"; } ]
-    ++ lib.optional (config.secrets.files ? typesafe-api-key) {
-      type = "decision";
-      model = "typesafe-ai/jev-latest";
-      apiKeyFile = config.secrets.files.typesafe-api-key;
-      fallbackOnAsk = true;
-    }
-    ++ [
-      ({ type = "llm"; }
-        // lib.optionalAttrs (available ? anthropic) { model = "anthropic/claude-sonnet-5-5"; }
-        // lib.optionalAttrs (!(available ? anthropic) && foundry) { model = "foundry/claude-opus-5-5"; })
-    ];
+  reviewers = [
+    { type = "static"; }
+  ]
+  ++ lib.optional (config.secrets.files ? typesafe-api-key) {
+    type = "decision";
+    model = "typesafe-ai/jev-latest";
+    apiKeyFile = config.secrets.files.typesafe-api-key;
+    fallbackOnAsk = true;
+  }
+  ++ [
+    (
+      {
+        type = "llm";
+      }
+      // lib.optionalAttrs (available ? anthropic) { model = "anthropic/claude-sonnet-5-5"; }
+      // lib.optionalAttrs (!(available ? anthropic) && foundry) { model = "foundry/claude-opus-5-5"; }
+    )
+  ];
 
   # Models for the memory plugin's hidden agents, from whichever provider this
   # host has: a fast one for recall (every turn) and extraction (each idle
@@ -118,31 +134,42 @@ let
   # the session's model these would fail on opencode's free models, which
   # reject a request without its shell tool.
   memoryModels =
-    if available ? anthropic then { fast = "anthropic/claude-haiku-4-5"; strong = "anthropic/claude-sonnet-5-5"; }
-    else if foundry then { fast = "foundry/claude-haiku-4-5"; strong = "foundry/claude-opus-5-5"; }
-    else null;
+    if available ? anthropic then
+      {
+        fast = "anthropic/claude-haiku-4-5";
+        strong = "anthropic/claude-sonnet-5-5";
+      }
+    else if foundry then
+      {
+        fast = "foundry/claude-haiku-4-5";
+        strong = "foundry/claude-opus-5-5";
+      }
+    else
+      null;
 
   # Route by capabilities for now. Cost, provider priority and account budgets
   # could filter or rank this pool later, but must not weaken the fixed reviewer.
-  delegatedModels = lib.optionals (available ? openai) [
-    {
-      model = "openai/gpt-6-luna";
-      description = "Straightforward, bounded lookups, summaries and simple boilerplate with clear requirements.";
-    }
-    {
-      model = "openai/gpt-6.1-sol";
-      description = "Deep code tracing, difficult debugging, algorithms and reasoning-heavy implementation.";
-    }
-  ] ++ lib.optionals (available ? anthropic) [
-    {
-      model = "anthropic/claude-sonnet-5-5";
-      description = "Everyday feature implementation, refactoring, research and code review of moderate complexity.";
-    }
-    {
-      model = "anthropic/claude-opus-5-5";
-      description = "Architecture, ambiguous requirements, cross-module changes and high-risk system configuration or security work.";
-    }
-  ];
+  delegatedModels =
+    lib.optionals (available ? openai) [
+      {
+        model = "openai/gpt-6-luna";
+        description = "Straightforward, bounded lookups, summaries and simple boilerplate with clear requirements.";
+      }
+      {
+        model = "openai/gpt-6.1-sol";
+        description = "Deep code tracing, difficult debugging, algorithms and reasoning-heavy implementation.";
+      }
+    ]
+    ++ lib.optionals (available ? anthropic) [
+      {
+        model = "anthropic/claude-sonnet-5-5";
+        description = "Everyday feature implementation, refactoring, research and code review of moderate complexity.";
+      }
+      {
+        model = "anthropic/claude-opus-5-5";
+        description = "Architecture, ambiguous requirements, cross-module changes and high-risk system configuration or security work.";
+      }
+    ];
 in
 {
   programs.opencode = {
@@ -169,14 +196,17 @@ in
     };
 
     settings = {
-      providers = lib.mapAttrs (_: entry: { settings.apiKey = "{file:${files.${entry}}}"; }) available
+      providers =
+        lib.mapAttrs (_: entry: { settings.apiKey = "{file:${files.${entry}}}"; }) available
         // lib.optionalAttrs foundry { foundry = foundryProvider; };
-    } // lib.optionalAttrs (foundry && available == { }) {
+    }
+    // lib.optionalAttrs (foundry && available == { }) {
       # Where Foundry is the only provider, start sessions on it rather than
       # on whatever opencode would pick from its free tier.
       model = "foundry/claude-opus-5-5";
       small_model = "foundry/claude-haiku-4-5";
-    } // {
+    }
+    // {
 
       # Claude Code's instructions, which opencode 2 no longer reads by itself
       # (it looks for AGENTS.md only). A relative entry is matched upwards from
@@ -215,8 +245,16 @@ in
       # The last matching rule wins, so the memory plugin's tools, which only
       # touch its memory folder, run without a review.
       permissions = [
-        { action = "*"; resource = "*"; effect = "ask"; }
-        { action = "memory_*"; resource = "*"; effect = "allow"; }
+        {
+          action = "*";
+          resource = "*";
+          effect = "ask";
+        }
+        {
+          action = "memory_*";
+          resource = "*";
+          effect = "allow";
+        }
       ];
 
       plugins = [
@@ -252,7 +290,8 @@ in
         # than running it without its environment. The V1 plugins
         # (simonwjackson/opencode-direnv and friends) don't load in opencode 2.
         { package = "@madsoftwaredev/opencode-direnv@0.1.2"; }
-      ] ++ lib.optional (files ? typesafe-api-key && delegatedModels != [ ]) {
+      ]
+      ++ lib.optional (files ? typesafe-api-key && delegatedModels != [ ]) {
         package = "${routingPlugin}";
         options = {
           apiKeyFile = files.typesafe-api-key;
@@ -263,7 +302,8 @@ in
           timeoutMs = 5000;
         };
       };
-    } // lib.optionalAttrs (memoryModels != null) {
+    }
+    // lib.optionalAttrs (memoryModels != null) {
       agents = {
         opencode-memory-recall.model = memoryModels.fast;
         opencode-memory-extract.model = memoryModels.fast;
