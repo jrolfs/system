@@ -152,6 +152,7 @@ would otherwise have to be rediscovered.
 | `documentation/SECRETS.md` | why secrets sit outside the flake, and the bootstrap dependency chain |
 | `documentation/ZSH.md` | moving zsh plugins from zinit to Nix, and the startup-time baseline |
 | `documentation/ARCADE.md` | Irulan's emulator station: ROM and BIOS layout, switching, scraping, controllers |
+| `documentation/VNC.md` | sharing Irulan's physical Hyprland desktop, password setup, and LAN/VPN limits |
 | `documentation/IRULAN-MIGRATION.md` | moving Leia's services to Irulan: what goes where, the phases, and how Komodo spans both hosts |
 | `documentation/KOMODO-CORE-CUTOVER.md` | moving Komodo Core from Leia to Irulan ahead of the services, step by step with rollbacks |
 | `homebrew/README.md` | the tap itself, and bumping a cask with `cask-updater` |
