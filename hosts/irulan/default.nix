@@ -1,4 +1,4 @@
-{ pkgs, lib, hostname, userName, ... }:
+{ config, pkgs, lib, hostname, userName, ... }:
 
 # Beelink SEi 12 Mini PC — i5-12450H, 16 GB RAM, 500 GB SSD.
 # Home-infra host, taking over Leia's services in the phases laid out in
@@ -164,6 +164,21 @@
   # even though most of what it runs is headless, with the emulator station
   # beside it (documentation/ARCADE.md).
   desktop.enable = true;
+  desktop.vnc = {
+    enable = true;
+    output = "HDMI-A-1";
+    passwordFile = config.onepassword.templates.vnc-password.path;
+  };
+  onepassword.templates.vnc-password = {
+    template = pkgs.writeText "vnc-password.tpl" ''
+      {{ op://Secrets/Irulan/vnc password }}
+    '';
+    owner = userName;
+  };
+  # Tailscale terminates on the router, so remote clients arrive on the LAN
+  # interface too. Never open legacy VNC on Docker bridges or other interfaces.
+  networking.firewall.interfaces.enp3s0.allowedTCPPorts = [ 5900 ];
+
   keyboard.enable = true;
   # The Magic Keyboard and Trackpad pair over it, and have to work at the
   # console as well as in the desktop.

@@ -11,5 +11,6 @@
     ./lock.nix
     ./shell
     ./vicinae.nix
+    ./vnc.nix
   ];
 }

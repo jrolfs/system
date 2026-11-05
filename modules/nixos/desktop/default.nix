@@ -24,5 +24,6 @@
     ./session.nix
     ./stylix.nix
     ./user-picture.nix
+    ./vnc.nix
   ];
 }
