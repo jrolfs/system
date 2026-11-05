@@ -122,12 +122,12 @@ let
 
       state=''${XDG_STATE_HOME:-$HOME/.local/state}/switch-panel
       socket=$state/panel.sock
-      address=unix:$socket
+      address="unix:$socket"
 
       # The panel's own look. Starts from kitty.conf, so the font and theme
       # match the main kitty; these are only what differs.
-      opacity=0.7
-      blur=64
+      opacity=0.55
+      blur=32
       width_fraction=0.6
       slide_in_ms=220
       slide_out_ms=180
@@ -165,23 +165,28 @@ let
       part() { print -r -- "(title+'$separator$separator').split('$separator')[$1]" }
       template="  {fmt.fg.color4}$logo  {fmt.fg.tab}{$(part 0)}{fmt.fg.color8}{$(part 1)}{fmt.fg.tab}{$(part 2)}"
 
-      # Cells the template puts in front of the title: margin, logo, gap.
-      prefix=5
+      # Cells of the window's width the title cannot have: the margin, logo and
+      # gap the template puts in front of it, and the two kitty holds back from
+      # a lone tab, past which it cuts the title short with an ellipsis. The
+      # tab bar is otherwise as wide as the window, because its margins are
+      # narrower than the window padding kitty.conf sets.
+      reserve=7
 
       # One big tab, padded to the room the template leaves so it fills the
       # bar, the same as kitty-panel's progress bar does.
       title() {
         local text="switch  $separator$1$separator''${2:+  $2}"
-        rc set-tab-title "''${(r:$(( $(columns) - prefix )):: :)text}"
+        # Padding counts characters, and the two separators are characters
+        # that take no cell.
+        local width=$(( $(columns) - reserve + 2 ))
+        rc set-tab-title "''${(r:width:: :)text}"
       }
 
-      # The tab bar holds fewer cells than the window has columns: it loses its
-      # side margins, and the logo is drawn two cells wide across the space
-      # after it. A title any longer is cut short with an ellipsis, which takes
-      # the clock off the end of the progress bar, so this leaves room to spare.
+      # The window's width in cells, from the terminal this runs in, which is
+      # the panel's. kitty-panel measures it the same way.
       columns() {
-        local count=$($kitten @ --to $address ls 2>/dev/null | $jq '.[0].tabs[0].windows[0].columns')
-        print -r -- $(( ''${count:-80} - 9 ))
+        local -a size=(''${=$(stty size </dev/tty 2>/dev/null)})
+        print -r -- ''${size[2]:-80}
       }
 
       clock() { printf '%d:%02d' $(( $1 / 60 )) $(( $1 % 60 )) }
@@ -190,8 +195,13 @@ let
       # coordinates shifted by whatever the calibration in `run` measured.
       geometry() { read visible offscreen offset < $state/geometry }
 
-      slide_in() { geometry && $kitty_panel slide in $address $offscreen $visible $slide_in_ms }
-      slide_out() { geometry && $kitty_panel slide out $address $visible $offscreen $slide_out_ms }
+      slide_in() {
+        geometry && $kitty_panel slide in $address $offscreen $visible $slide_in_ms
+      }
+
+      slide_out() {
+        geometry && $kitty_panel slide out $address $visible $offscreen $slide_out_ms
+      }
 
       # On screen and in place, as opposed to hidden or parked off the right
       # edge. Read from the window's real position, not remembered, so a panel
@@ -316,7 +326,7 @@ let
         cd "''${SWITCH_PANEL_DIRECTORY:-$HOME}"
         export PATH=''${SWITCH_PANEL_PATH:-$PATH}
 
-        $kitty_panel progress $address $(( $(columns) - prefix )) switch &!
+        $kitty_panel progress $address $reserve switch &!
         local ticker=$!
 
         local start=$SECONDS

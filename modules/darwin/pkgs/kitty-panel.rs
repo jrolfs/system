@@ -17,7 +17,10 @@
 // crates, so the JSON below is written by hand.
 
 use std::f64::consts::TAU;
+use std::ffi::{c_int, c_ulong};
+use std::fs::File;
 use std::io::Write;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 use std::thread::sleep;
@@ -125,14 +128,17 @@ fn slide(panel: &mut Panel, direction: Direction, from: f64, to: f64, duration: 
     }
 }
 
-// Eighth-height blocks, so each cell of the one-row tab bar is a column whose
-// height can vary, and a row of them draws a waveform.
-const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+// Shades from sparse to solid, so each cell of the one-row tab bar is a stipple
+// whose density can vary, and a row of them grades like an ombre. The last is
+// what the crest of the swell reaches, and dropping it softens the crest.
+const SHADES: [char; 4] = ['░', '▒', '▓', '█'];
 
-// The tallest block the bar uses. Full height reads as a loading bar shouting
-// at you; stopping at half keeps it a texture, alongside the dim colour the
-// tab title template gives it.
-const PEAK: f64 = 4.0;
+// Four shades are too few to grade smoothly on their own: rounded to the
+// nearest, a slope reads as bands with hard edges. Each cell rounds against a
+// threshold of its own instead, a one-row Bayer matrix, so where the density
+// falls between two shades, neighbouring cells alternate between them in
+// proportion, the way ordered dithering does with pixels.
+const DITHER: [f64; 4] = [0.125, 0.625, 0.375, 0.875];
 
 // Between the label, the bar and the clock in the title, so the tab title
 // template can colour each part: a title is plain text, and colour is only
@@ -145,14 +151,14 @@ const SEPARATOR: char = '\u{2063}';
 // needs more than this.
 const TICK: Duration = Duration::from_millis(83);
 
-// Heights for one frame of the bar, `width` cells across at `seconds` in.
+// Shades for one frame of the bar, `width` cells across at `seconds` in.
 //
 // Two layers. A swell, a Gaussian bump drifting back and forth across the bar,
-// sets where it is tall, and its soft edges are what make the heights grade
-// smoothly instead of stepping. A ripple travelling through it keeps the swell
-// moving even while the bump itself is near the end of a pass. The floor is the
-// lowest block, so the track is always drawn and the bar never goes blank.
-fn wave(width: usize, seconds: f64) -> String {
+// sets where it is dense, and its soft edges are what fade it out to either
+// side. A ripple travelling through it keeps the swell moving even while the
+// bump itself is near the end of a pass. The floor is the sparsest shade, so
+// the track is always drawn and the bar never goes blank.
+fn ombre(width: usize, seconds: f64) -> String {
     if width == 0 {
         return String::new();
     }
@@ -162,14 +168,16 @@ fn wave(width: usize, seconds: f64) -> String {
     let pass = (seconds / 3.2) % 2.0;
     let centre = if pass < 1.0 { pass } else { 2.0 - pass };
     let spread = 0.22;
+    let densest = (SHADES.len() - 1) as f64;
 
     (0..width)
         .map(|cell| {
             let position = cell as f64 / (width.max(2) - 1) as f64;
             let swell = (-((position - centre) / spread).powi(2)).exp();
             let ripple = 0.5 + 0.5 * (TAU * (position * 3.0 - seconds * 0.9)).sin();
-            let height = PEAK * swell * (0.55 + 0.45 * ripple);
-            BLOCKS[(height.round() as usize).min(BLOCKS.len() - 1)]
+            let density = densest * swell * (0.7 + 0.3 * ripple);
+            let shade = (density + DITHER[cell % DITHER.len()]).floor() as usize;
+            SHADES[shade.min(SHADES.len() - 1)]
         })
         .collect()
 }
@@ -181,10 +189,38 @@ fn elapsed(seconds: u64) -> String {
     }
 }
 
+// struct winsize, and the request that fills it, from <sys/ttycom.h>.
+#[repr(C)]
+#[derive(Default)]
+struct WindowSize {
+    rows: u16,
+    columns: u16,
+    width: u16,
+    height: u16,
+}
+
+const TIOCGWINSZ: c_ulong = 0x4008_7468;
+
+unsafe extern "C" {
+    fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
+}
+
+// The width in cells of the window this runs in, which is the panel's. Asked
+// every frame rather than once, because the panel is still being sized while
+// the command in it starts: a width read then has come back 30 columns short
+// of where it settled two seconds later.
+fn columns(terminal: &File) -> std::io::Result<usize> {
+    let mut size = WindowSize::default();
+    if unsafe { ioctl(terminal.as_raw_fd(), TIOCGWINSZ, &mut size as *mut WindowSize) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(usize::from(size.columns))
+}
+
 // Keeps the tab title animated until the process is killed, which is how the
-// caller stops it: it then sets the final title itself. `columns` is the room
-// the template leaves for the title, so the one tab fills the whole bar.
-fn progress(panel: &mut Panel, label: &str, columns: usize) -> std::io::Result<()> {
+// caller stops it: it then sets the final title itself. `reserve` is the cells
+// of the window's width the title cannot have, so the one tab fills the bar.
+fn progress(panel: &mut Panel, terminal: &File, label: &str, reserve: usize) -> std::io::Result<()> {
     let start = Instant::now();
     loop {
         let seconds = start.elapsed().as_secs_f64();
@@ -192,8 +228,9 @@ fn progress(panel: &mut Panel, label: &str, columns: usize) -> std::io::Result<(
 
         // Two spaces between the parts and after the clock; the template puts
         // the margin and the logo in front of the label.
+        let room = columns(terminal)?.saturating_sub(reserve);
         let used = label.chars().count() + clock.chars().count() + 6;
-        let bar = wave(columns.saturating_sub(used), seconds);
+        let bar = ombre(room.saturating_sub(used), seconds);
         let title = format!("{label}  {SEPARATOR}{bar}{SEPARATOR}  {clock}  ");
 
         panel.send("set-tab-title", &format!(r#"{{"title":{},"match":null}}"#, json_string(&title)))?;
@@ -202,7 +239,7 @@ fn progress(panel: &mut Panel, label: &str, columns: usize) -> std::io::Result<(
 }
 
 const USAGE: &str = "usage: kitty-panel slide in|out <address> <from-x> <to-x> <milliseconds>
-       kitty-panel progress <address> <columns> <label...>";
+       kitty-panel progress <address> <reserve> <label...>";
 
 // sysexits.h, as fda-run uses elsewhere in this repo.
 const EX_USAGE: u8 = 64;
@@ -250,15 +287,22 @@ fn main() -> ExitCode {
             }
         }
 
-        ["progress", address, columns, label @ ..] if !label.is_empty() => {
-            let Ok(columns) = columns.parse::<usize>() else {
+        ["progress", address, reserve, label @ ..] if !label.is_empty() => {
+            let Ok(reserve) = reserve.parse::<usize>() else {
                 return usage();
+            };
+            let terminal = match File::open("/dev/tty") {
+                Ok(terminal) => terminal,
+                Err(error) => {
+                    eprintln!("kitty-panel: progress: no terminal to measure: {error}");
+                    return ExitCode::from(EX_UNAVAILABLE);
+                }
             };
             let mut panel = match connect(address) {
                 Ok(panel) => panel,
                 Err(code) => return code,
             };
-            match progress(&mut panel, &label.join(" "), columns) {
+            match progress(&mut panel, &terminal, &label.join(" "), reserve) {
                 Ok(()) => ExitCode::SUCCESS,
                 // The panel closing under the bar is a normal way for it to
                 // end, not a failure worth reporting.
