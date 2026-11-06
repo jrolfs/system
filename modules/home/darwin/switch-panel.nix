@@ -168,8 +168,9 @@ let
       # Cells of the window's width the title cannot have: the margin, logo and
       # gap the template puts in front of it, and the two kitty holds back from
       # a lone tab, past which it cuts the title short with an ellipsis. The
-      # tab bar is otherwise as wide as the window, because its margins are
-      # narrower than the window padding kitty.conf sets.
+      # tab bar is otherwise as wide as the window, as long as
+      # tab_bar_margin_width in `run` stays no wider than the side padding
+      # window_padding_width sets there.
       reserve=7
 
       # One big tab, padded to the room the template leaves so it fills the
@@ -281,6 +282,7 @@ let
           -o tab_bar_background=none -o tab_bar_margin_color=none \
           -o active_tab_background='#32302f' -o active_tab_foreground='#c5b18d' -o active_tab_font_style=normal \
           -o 'tab_bar_margin_height=5 3' -o tab_bar_margin_width=10 \
+          -o 'window_padding_width 10 12 10 12' \
           $self inner "$@" </dev/null >|$state/panel.log 2>&1 &!
 
         local tries
