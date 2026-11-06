@@ -154,6 +154,10 @@ let
       tab_bar_margin=4
       tab_bar_margin_height='10 3'
 
+      # The label's colour, as hex RRGGBB: halfway along the bar's blend from
+      # blue to purple, and a lighter take on the darker blue in the Nix logo.
+      label_colour=8f9fd2
+
       rc() { $kitten @ --to $address "$@" >/dev/null 2>&1 }
 
       alive() { [[ -S $socket ]] && $kitten @ --to $address ls >/dev/null 2>&1 }
@@ -193,7 +197,7 @@ let
       fill="{' ' * max(0, max_title_length - 5 - wcswidth(title))}"
       # In double quotes, which kitty strips again, because it drops leading
       # spaces from an option's value otherwise.
-      template="\"  {fmt.fg.color4}$logo  {fmt.fg.tab}{$(part 0)}{fmt.fg.color8}{$(part 1)}$fill{fmt.fg.tab}{$(part 2)}\""
+      template="\"  {fmt.fg.color4}$logo  {fmt.fg._$label_colour}{$(part 0)}{fmt.fg.color8}{$(part 1)}$fill{fmt.fg.tab}{$(part 2)}\""
 
       # What kitty-panel takes off the window's width to size the bar: the five
       # cells in front of the title and the two kitty holds back from a lone
