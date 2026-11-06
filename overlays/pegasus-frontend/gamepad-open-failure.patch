@@ -1,0 +1,77 @@
+--- a/src/backend/model/internal/GamepadManagerSDL2.cpp
++++ b/src/backend/model/internal/GamepadManagerSDL2.cpp
+@@ -528,10 +528,13 @@
+ 
+ void GamepadManagerSDL2::remove_pad_by_iid(SDL_JoystickID instance_id)
+ {
+-    Q_ASSERT(m_iid_to_idx.count(instance_id) == 1);
+-    Q_ASSERT(m_idx_to_device.count(m_iid_to_idx.at(instance_id)) == 1);
++    // A pad that failed to open was never registered, but SDL still reports
++    // its removal: a Bluetooth DualSense can drop while it's being opened.
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end())
++        return;
+ 
+-    const int device_idx = m_iid_to_idx.at(instance_id);
++    const int device_idx = iid_it->second;
+     m_idx_to_device.erase(device_idx);
+     m_iid_to_idx.erase(instance_id);
+ 
+@@ -543,14 +546,22 @@
+ 
+ void GamepadManagerSDL2::fwd_button_event(SDL_JoystickID instance_id, Uint8 button, bool pressed)
+ {
+-    const int device_idx = m_iid_to_idx.at(instance_id);
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end())
++        return;
++
++    const int device_idx = iid_it->second;
+     emit buttonChanged(device_idx, translate_button(button), pressed);
+ }
+ 
+ void GamepadManagerSDL2::fwd_axis_event(SDL_JoystickID instance_id, Uint8 axis, Sint16 value)
+ {
+-    const int device_idx = m_iid_to_idx.at(instance_id);
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end())
++        return;
+ 
++    const int device_idx = iid_it->second;
++
+     const GamepadButton button = detect_trigger_axis(axis);
+     if (button != GamepadButton::INVALID) {
+         emit buttonChanged(device_idx, button, value != 0);
+@@ -566,8 +577,8 @@
+     if (!m_recording.is_active())
+         return;
+ 
+-    const int device_idx = m_iid_to_idx.at(instance_id);
+-    if (m_recording.device != device_idx)
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end() || m_recording.device != iid_it->second)
+         return;
+ 
+     m_recording.value = generate_button_str(button);
+@@ -579,8 +590,8 @@
+     if (!m_recording.is_active())
+         return;
+ 
+-    const int device_idx = m_iid_to_idx.at(instance_id);
+-    if (m_recording.device != device_idx)
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end() || m_recording.device != iid_it->second)
+         return;
+ 
+     constexpr Sint16 deadzone = std::numeric_limits<Sint16>::max() / 2;
+@@ -599,8 +610,8 @@
+     if (!m_recording.is_active())
+         return;
+ 
+-    const int device_idx = m_iid_to_idx.at(instance_id);
+-    if (m_recording.device != device_idx)
++    const auto iid_it = m_iid_to_idx.find(instance_id);
++    if (iid_it == m_iid_to_idx.end() || m_recording.device != iid_it->second)
+         return;
+ 
+     if (hat_value == SDL_HAT_CENTERED)
