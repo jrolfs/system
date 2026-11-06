@@ -322,12 +322,13 @@ fn progress(panel: &mut Panel, terminal: &File, gradient: &Gradient, label: &str
         let seconds = start.elapsed().as_secs_f64();
         let clock = elapsed(seconds as u64);
 
-        // Two spaces between the parts and after the clock; the template puts
+        // Two spaces between the parts, and none after the clock, which the
+        // template puts against the end of the tab bar. The template also puts
         // the margin and the logo in front of the label.
         let room = columns(terminal)?.saturating_sub(reserve);
-        let used = label.chars().count() + clock.chars().count() + 6;
+        let used = label.chars().count() + clock.chars().count() + 4;
         let bar = ombre(room.saturating_sub(used), seconds, gradient);
-        let title = format!("{label}  {SEPARATOR}{bar}{SEPARATOR}  {clock}  ");
+        let title = format!("{label}  {SEPARATOR}{bar}{SEPARATOR}  {clock}");
 
         panel.send("set-tab-title", &format!(r#"{{"title":{},"match":null}}"#, json_string(&title)))?;
         sleep(TICK);
