@@ -190,9 +190,10 @@
   av = {
     enable = true;
     entity = "media_player.living_room_living_room_smart";
-    # By hand only. Each start of the station turned the TV on, so a station
-    # stuck restarting after a crash woke the TV every few seconds, including
-    # straight after the Apple TV put it to standby.
+    # By hand only until a CEC adapter arrives. Each start of the station
+    # turned the TV on, so a station stuck restarting after a crash woke the
+    # TV every few seconds, including straight after the Apple TV put it to
+    # standby.
     automatic = false;
   };
 
