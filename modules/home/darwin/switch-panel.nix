@@ -29,6 +29,8 @@
 # kitty-panel, which can drive it at a frame rate a shell cannot.
 
 let
+  palette = (import ../../theme/palette.nix).dark.soft;
+
   kittyPanel = pkgs.rustTool {
     name = "kitty-panel";
     src = ../../darwin/pkgs/kitty-panel.rs;
@@ -133,6 +135,11 @@ let
       slide_out_ms=180
       countdown=10
 
+      # The progress bar's colours: its track, and the crest of the swell that
+      # drifts along it.
+      bar_track='${palette.blue}'
+      bar_crest='${palette.purple}'
+
       rc() { $kitten @ --to $address "$@" >/dev/null 2>&1 }
 
       alive() { [[ -S $socket ]] && $kitten @ --to $address ls >/dev/null 2>&1 }
@@ -149,10 +156,10 @@ let
       }
 
       # The tab title is three parts, a label, a middle and a right-hand part,
-      # split on U+2063 so the template can colour each: a title is plain text,
-      # and colour only comes from the template. kitty-panel's progress bar
-      # writes the same shape. The middle is the dim one, bright black, which
-      # is what keeps the bar a texture rather than a loading bar.
+      # split on U+2063 so the template can colour each. kitty-panel's progress
+      # bar writes the same shape, and colours the bar itself, cell by cell,
+      # since a part of the template has only one colour. The middle is the
+      # dim one, bright black, for the message that replaces the bar.
       #
       # The logo is nf-linux-nixos, built from its codepoint rather than written
       # into this file: a private-use character is exactly what tools pass
@@ -328,7 +335,7 @@ let
         cd "''${SWITCH_PANEL_DIRECTORY:-$HOME}"
         export PATH=''${SWITCH_PANEL_PATH:-$PATH}
 
-        $kitty_panel progress $address $reserve switch &!
+        $kitty_panel progress $address $reserve $bar_track $bar_crest switch &!
         local ticker=$!
 
         local start=$SECONDS
