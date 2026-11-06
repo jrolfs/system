@@ -5,6 +5,7 @@
 {
   imports = [
     ./bootstrap.nix
+    ./home-activation.nix
     ./home-backup.nix
     ./nix.nix
     ./packages.nix

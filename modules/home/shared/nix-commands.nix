@@ -16,9 +16,18 @@
 #   --worktree          switch the worktree of this repo the shell is in
 #   --worktree=<branch> switch the worktree with that branch checked out
 #   --main              switch the main checkout, even from inside a worktree
+#   --home              activate home-manager alone: the dotfiles, generated
+#                       files, its activation steps and launch agents, with no
+#                       sudo and none of the system's activation
 #
 # plus whatever the platform adds, and passes anything else through to the
-# rebuild. --update has to be asked for: the rebuild only ever reads the lock,
+# rebuild.
+#
+# --home leaves home.packages behind. useUserPackages installs them through
+# the system's per-user profile, which only a full switch replaces, so a
+# command added or changed there needs one, and --home says when it does.
+#
+# --update has to be asked for: the rebuild only ever reads the lock,
 # which is what makes a bare nix-switch reproducible, so moving inputs
 # underneath it silently would cost more than the keystrokes save. The lock
 # change is left uncommitted on purpose, to be reviewed with the switch that
@@ -62,6 +71,13 @@ let
   # whether a bare nix-switch should pick up the worktree it's run from; an
   # explicit --worktree finds the tree through git wherever it lives.
   worktrees = "${config.home.homeDirectory}/.config/.system";
+
+  # The wrapper modules/shared/home-activation.nix builds, as the tree being
+  # switched defines it, so --home runs that tree's activation rather than
+  # this one's.
+  configurations =
+    if pkgs.stdenv.hostPlatform.isDarwin then "darwinConfigurations" else "nixosConfigurations";
+  homeActivation = "${configurations}.${hostname}.config.system.build.homeActivation.${config.home.username}";
 
   # Every flake input, for completing --update=<input> and nix-update's
   # arguments. Taken from the flake that built this configuration, so it's
@@ -130,9 +146,27 @@ let
         fi
       }
 
+      # Builds and runs the home-manager activation alone, as the user, then
+      # checks the system's per-user profile for the packages it expects.
+      home_switch() {
+        local tree=$1 result packages
+        shift
+        local -a references
+
+        result=$(nix build --no-link --print-out-paths --show-trace "$@" \
+          "$tree#${homeActivation}") || return
+        $result/activate || return
+
+        packages=$(readlink $result/generation/home-path)
+        references=(''${(f)"$(nix-store --query --references /etc/profiles/per-user/$USER 2>/dev/null)"})
+        if (( ! ''${references[(Ie)$packages]} )); then
+          print -u2 "nix-switch: home.packages changed, and only a full switch installs them"
+        fi
+      }
+
       main() {
       ${cfg.delegate}
-        local update=no pull=no mode=auto branch= tree ${cfg.locals}
+        local update=no pull=no home=no mode=auto branch= tree ${cfg.locals}
         local -a rest inputs
 
         for argument in "$@"; do
@@ -140,6 +174,7 @@ let
             --pull) pull=yes ;;
             --update) update=yes ;;
             --update=*) update=yes; inputs+=("''${argument#--update=}") ;;
+            --home) home=yes ;;
             --main) mode=main ;;
             --worktree) mode=here ;;
             --worktree=*) mode=branch; branch=''${argument#--worktree=} ;;
@@ -162,6 +197,11 @@ let
 
         if [[ $update == yes ]]; then
           nix flake update --flake $tree "''${inputs[@]}" || return
+        fi
+
+        if [[ $home == yes ]]; then
+          home_switch $tree "''${rest[@]}"
+          return
         fi
 
       ${cfg.beforeSwitch}
@@ -241,6 +281,7 @@ in
         nix-switch)
           _arguments \
             '--pull[fast-forward the tree being switched first]' \
+            '--home[activate home-manager alone, without the system]' \
             '*--update=-[refresh flake.lock first, all inputs or the one named]::flake input:(${inputNames})' \
             '(--main)--worktree=-[switch a worktree: this one, or the branch named]::worktree branch:_nix_switch_worktrees' \
             '(--worktree)--main[switch ~/.config/system even from a worktree]'${flagSpecs}
