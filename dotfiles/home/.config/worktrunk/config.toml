@@ -97,9 +97,10 @@ exclude = ["node_modules/"]
 # ### Merge
 #
 # Most flags are on by default. Set to false to change default behavior.
-#
-# [merge]
-# squash = true      # Squash commits into one (--no-squash to preserve history)
+
+[merge]
+squash = false       # Squash commits into one (--no-squash to preserve history)
+
 # commit = true      # Commit uncommitted changes first (--no-commit to skip)
 # rebase = true      # Rebase onto target before merge (--no-rebase to skip)
 # remove = true      # Remove worktree after merge (--no-remove to keep)
