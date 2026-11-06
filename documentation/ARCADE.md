@@ -12,11 +12,13 @@ on virtual terminal 7, beside the desktop on tty1. Configured by
 |---|---|
 | `station` | Start the station if it isn't running, and show it |
 | `desktop` | Show the desktop (greetd's log-in screen, or the session behind it) |
-| Hold the PS / Home button for about a second | Toggle between the two |
+| Tap the PS / Home button three times quickly | Toggle between the two |
 
 Both stay running, so switching is a VT switch and nothing is lost on either
-side. A short press of the PS button still reaches RetroArch, which opens its
-menu. Start+Select quits a game back to Pegasus.
+side. One or two presses of the PS button still reach RetroArch, which opens
+its menu; three switch, so leaving a game that way leaves RetroArch's menu open
+behind it. It isn't a hold, because holding PS is how a DualSense turns itself
+off. Start+Select quits a game back to Pegasus.
 
 The commands work for Jamie and for the arcade user without a password. Polkit
 lets those two users start exactly three units, `arcade-switch@station`,
@@ -199,4 +201,4 @@ without saying why.
 3. Pair a controller, then `station`. Pegasus should appear with no
    collections until games are copied in.
 4. Copy in a game and its BIOS if it needs one, restart the station, launch
-   it, then try Start+Select and holding PS.
+   it, then try Start+Select and a triple tap of PS.

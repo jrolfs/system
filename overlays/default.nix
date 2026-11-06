@@ -112,6 +112,18 @@ in
     ];
   });
 
+  # Pegasus aborts when a gamepad drops while it's being opened, which a
+  # Bluetooth DualSense does as it wakes. SDL_GameControllerOpen fails, so the
+  # pad is never registered, and the removal SDL reports next is looked up with
+  # unordered_map::at, which throws. On Irulan that took the emulator station
+  # down nearly every time the controller woke (2026-11-04 to -06). The patch
+  # ignores events for a pad that was never registered. It's a diff against the
+  # rev nixpkgs builds (cf28a1b, 0-unstable-2026-10-26), so a bump means
+  # checking it still applies. Not yet sent upstream.
+  pegasus-frontend = super.pegasus-frontend.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./pegasus-frontend/gamepad-open-failure.patch ];
+  });
+
   # zshcs — Zsh LSP server (github:yuys13/zshcs), not in nixpkgs. Pinned via
   # the `zshcs` flake input (flake = false); bump with `nix flake update zshcs`.
   # Reuses upstream flake.nix's build recipe: a plain buildRustPackage with

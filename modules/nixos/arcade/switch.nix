@@ -1,7 +1,8 @@
 { config, lib, pkgs, userName, ... }:
 
 # Moving the TV between the emulator station and the desktop while both are
-# running: `station`, `desktop`, or holding the PS button on any controller.
+# running: `station`, `desktop`, or three quick taps of the PS button on any
+# controller.
 #
 # Switching needs root twice over, to start a system service and to change the
 # active virtual terminal. Rather than let anyone run chvt or manage units, the

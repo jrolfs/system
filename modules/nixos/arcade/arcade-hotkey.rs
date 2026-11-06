@@ -1,12 +1,17 @@
-// Holding the PS/Home button on any gamepad runs a command: on Irulan, the
-// switch between the emulator station and the desktop.
+// Tapping the PS/Home button three times quickly on any gamepad runs a
+// command: on Irulan, the switch between the emulator station and the desktop.
+//
+// It used to be a hold, but holding PS is also how a DualSense turns itself
+// off, so a hold long enough to switch was the start of one that powered the
+// pad down, and the pad waking again took Pegasus with it. One or two presses
+// are RetroArch's menu, so three it is. They still reach RetroArch, whose
+// menu ends up open on the way out of a game, which is harmless.
 //
 // Reads /dev/input/event* directly rather than through SDL or a desktop's
 // input stack, so it works on whichever virtual terminal is showing,
 // including a text console, and needs nothing but root. Devices are only
-// read, never grabbed, so the button still reaches whatever else is
-// listening (RetroArch opens its menu on a short press). Built by
-// `pkgs.rustTool` in overlays/default.nix.
+// read, never grabbed, so every press still reaches whatever else is
+// listening. Built by `pkgs.rustTool` in overlays/default.nix.
 //
 // usage: arcade-hotkey <command> [arguments...]
 
@@ -15,7 +20,6 @@ use std::env;
 use std::fs::{self, File};
 use std::io::Read;
 use std::process::{self, Command};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -28,11 +32,15 @@ const BTN_MODE: u16 = 0x13c;
 // the test for "is this a controller".
 const BTN_SOUTH: usize = 0x130;
 
-// Long enough that a tap meant for RetroArch's menu doesn't switch sessions.
-const HOLD: Duration = Duration::from_millis(900);
+const TAPS: u32 = 3;
 
-// A held button can only switch once, and two controllers can't bounce the
-// screen back and forth between them.
+// The most time between one press and the next for them to count as one
+// gesture. Quick enough that two separate trips into RetroArch's menu don't
+// add up to a switch.
+const GAP: Duration = Duration::from_millis(500);
+
+// Two controllers can't bounce the screen back and forth between them, and
+// six quick taps switch once, not twice.
 const COOLDOWN: Duration = Duration::from_secs(2);
 
 // struct input_event on 64-bit Linux: a 16-byte timeval, then u16 type,
@@ -82,10 +90,10 @@ fn watch(
     if let Ok(mut device) = File::open(format!("/dev/input/{name}")) {
         eprintln!("arcade-hotkey: watching {name}");
 
-        // Which press the button is in, or 0 when it's up. A timer only fires
-        // if the press that started it is still the current one.
-        let held = Arc::new(AtomicU64::new(0));
-        let mut presses = 0u64;
+        // Taps so far in the current gesture, and when the latest landed.
+        // Per controller, so two pads' presses never combine into one.
+        let mut taps = 0u32;
+        let mut previous: Option<Instant> = None;
         let mut buffer = [0u8; EVENT_SIZE];
 
         // A read error is the controller going away (disconnected, out of
@@ -96,31 +104,24 @@ fn watch(
             let code = u16::from_ne_bytes([buffer[18], buffer[19]]);
             let value = i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
 
-            if kind != EV_KEY || code != BTN_MODE {
+            // Presses only: 0 is the release and 2 the key repeat a held
+            // button sends, neither of which is a tap.
+            if kind != EV_KEY || code != BTN_MODE || value != 1 {
                 continue;
             }
 
-            match value {
-                1 => {
-                    presses += 1;
-                    held.store(presses, Ordering::SeqCst);
+            let now = Instant::now();
 
-                    let press = presses;
-                    let held = Arc::clone(&held);
-                    let command = Arc::clone(&command);
-                    let last = Arc::clone(&last);
+            if previous.is_none_or(|time| now.duration_since(time) > GAP) {
+                taps = 0;
+            }
 
-                    thread::spawn(move || {
-                        thread::sleep(HOLD);
+            taps += 1;
+            previous = Some(now);
 
-                        if held.load(Ordering::SeqCst) == press {
-                            fire(&command, &last);
-                        }
-                    });
-                }
-                0 => held.store(0, Ordering::SeqCst),
-                // 2 is key repeat, which a held button sends continuously.
-                _ => {}
+            if taps == TAPS {
+                taps = 0;
+                fire(&command, &last);
             }
         }
     }
