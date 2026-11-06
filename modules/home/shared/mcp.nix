@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 # MCP servers available in every session on every machine, declared once in
 # programs.mcp.servers and handed to each harness through home-manager's own
@@ -22,6 +22,20 @@
 # Zed's settings.json, which is an out-of-store link because Zed writes it
 # back, so turning it on means handing that file over first.
 
+let
+  # GitHub's hosted server, api.githubcopilot.com/mcp, has no dynamic client
+  # registration, so `/mcp` can't sign in to it the way it does the URLs below.
+  # It would need an OAuth app registered by hand, which an org restricting
+  # third-party access then has to approve, or a token written into a header.
+  # The local server borrows the token `gh auth login` already holds instead,
+  # read at launch so it never reaches the store, and so it sees every org gh
+  # does. On a machine where gh isn't logged in, the server just fails to start.
+  github = pkgs.writeShellScript "github-mcp-server" ''
+    GITHUB_PERSONAL_ACCESS_TOKEN=$(${lib.getExe config.programs.gh.package} auth token) || exit
+    export GITHUB_PERSONAL_ACCESS_TOKEN
+    exec ${lib.getExe pkgs.github-mcp-server} stdio
+  '';
+in
 {
   programs.mcp = {
     enable = true;
@@ -42,6 +56,7 @@
       # By store path rather than from PATH, so the server is the one this
       # generation built and nothing else has to install it.
       nixos.command = "${pkgs.mcp-nixos}/bin/mcp-nixos";
+      github.command = "${github}";
     };
   };
 
