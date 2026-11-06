@@ -140,6 +140,20 @@ let
       bar_track='${palette.blue}'
       bar_crest='${palette.purple}'
 
+      # kitty.conf's padding, except on the left, where the shader's split line
+      # is painted over the first 8pt (16 device pixels) of it. Those go on top,
+      # so the text sits as far from the line as it does from the right edge.
+      padding='10 12 10 20'
+
+      # The tab bar's side margins, as narrow as lining the logo up with the
+      # text allows, since only that brings the clock near the right edge:
+      # 4pt and the two spaces at the front of the template come to the 20pt
+      # of padding. kitty holds two cells back from a lone tab, so even so the
+      # clock ends a cell short of the text's right edge. Above the tab bar, the
+      # 10pt the main kitty leaves above its first line.
+      tab_bar_margin=4
+      tab_bar_margin_height='10 3'
+
       rc() { $kitten @ --to $address "$@" >/dev/null 2>&1 }
 
       alive() { [[ -S $socket ]] && $kitten @ --to $address ls >/dev/null 2>&1 }
@@ -170,32 +184,26 @@ let
       # Two separators appended, so there are always three parts to index even
       # in a title nothing here set.
       part() { print -r -- "(title+'$separator$separator').split('$separator')[$1]" }
-      template="  {fmt.fg.color4}$logo  {fmt.fg.tab}{$(part 0)}{fmt.fg.color8}{$(part 1)}{fmt.fg.tab}{$(part 2)}"
+      # Spaces before the last part, as many as put it against the end of the
+      # tab bar, so the clock sits flush right whatever width the bar came to,
+      # and the tab fills the bar. kitty hands the template the room it has for
+      # the whole tab as max_title_length, and its wcswidth skips the
+      # separators and the bar's colour codes. The five are the two spaces, the
+      # logo and the gap in front of the title.
+      fill="{' ' * max(0, max_title_length - 5 - wcswidth(title))}"
+      # In double quotes, which kitty strips again, because it drops leading
+      # spaces from an option's value otherwise.
+      template="\"  {fmt.fg.color4}$logo  {fmt.fg.tab}{$(part 0)}{fmt.fg.color8}{$(part 1)}$fill{fmt.fg.tab}{$(part 2)}\""
 
-      # Cells of the window's width the title cannot have: the margin, logo and
-      # gap the template puts in front of it, and the two kitty holds back from
-      # a lone tab, past which it cuts the title short with an ellipsis. The
-      # tab bar is otherwise as wide as the window, as long as
-      # tab_bar_margin_width in `run` stays no wider than the side padding
-      # window_padding_width sets there.
-      reserve=7
+      # What kitty-panel takes off the window's width to size the bar: the five
+      # cells in front of the title and the two kitty holds back from a lone
+      # tab, less the three the tab bar has over the window, whose margins take
+      # 24pt less of the width than the window's padding does. That is three
+      # cells at this font's 8pt cell. A wider bar would put an ellipsis over
+      # the clock, and a narrower one only widens the gap before it.
+      reserve=4
 
-      # One big tab, padded to the room the template leaves so it fills the
-      # bar, the same as kitty-panel's progress bar does.
-      title() {
-        local text="switch  $separator$1$separator''${2:+  $2}"
-        # Padding counts characters, and the two separators are characters
-        # that take no cell.
-        local width=$(( $(columns) - reserve + 2 ))
-        rc set-tab-title "''${(r:width:: :)text}"
-      }
-
-      # The window's width in cells, from the terminal this runs in, which is
-      # the panel's. kitty-panel measures it the same way.
-      columns() {
-        local -a size=(''${=$(stty size </dev/tty 2>/dev/null)})
-        print -r -- ''${size[2]:-80}
-      }
+      title() { rc set-tab-title "switch  $separator$1$separator''${2:+  $2}" }
 
       clock() { printf '%d:%02d' $(( $1 / 60 )) $(( $1 % 60 )) }
 
@@ -288,8 +296,8 @@ let
           -o 'tab_separator=""' -o "tab_title_template=$template" -o "active_tab_title_template=$template" \
           -o tab_bar_background=none -o tab_bar_margin_color=none \
           -o active_tab_background='#32302f' -o active_tab_foreground='#c5b18d' -o active_tab_font_style=normal \
-          -o 'tab_bar_margin_height=5 3' -o tab_bar_margin_width=10 \
-          -o 'window_padding_width 10 12 10 12' \
+          -o "tab_bar_margin_height=$tab_bar_margin_height" -o tab_bar_margin_width=$tab_bar_margin \
+          -o "window_padding_width=$padding" \
           $self inner "$@" </dev/null >|$state/panel.log 2>&1 &!
 
         local tries
