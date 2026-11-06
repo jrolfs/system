@@ -19,7 +19,8 @@ let
 
   session = pkgs.writeShellApplication {
     name = "arcade-session";
-    runtimeInputs = [ pkgs.kbd config.systemd.package pkgs.coreutils ];
+    runtimeInputs = [ pkgs.kbd config.systemd.package pkgs.coreutils pkgs.util-linux ]
+      ++ lib.optional greetd config.programs.hyprland.package;
     text = ''
       station() {
         # A station that hit its start limit refuses a plain start until the
@@ -29,9 +30,49 @@ let
         chvt ${vt}
       }
 
+      # Hyprland on tty1, the login screen's or a logged-in desktop, comes
+      # back from the station's VT without a display mode: gamescope changed
+      # the output while it was away, and Hyprland's backend puts off setting
+      # one ("has output but state has no mode, will send a reset state event
+      # later") and never does, which leaves the TV unlit. Turning its DPMS
+      # off and on makes it commit a mode again (found 2026-11-06).
+      wake_hyprland() {
+        local active="" user uid
+
+        # chvt returns before logind has moved the seat over.
+        for _ in $(seq 20); do
+          active=$(loginctl show-seat seat0 --property=ActiveSession --value)
+          if [[ -n $active && $(loginctl show-session "$active" --property=TTY --value) == tty1 ]]; then
+            break
+          fi
+          active=""
+          sleep 0.1
+        done
+        [[ -n $active ]] || return 0
+
+        user=$(loginctl show-session "$active" --property=Name --value)
+        uid=$(loginctl show-session "$active" --property=User --value)
+
+        as_user() {
+          runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" "$@"
+        }
+
+        # Hyprland's own restore runs as the VT comes back; nudge it after.
+        sleep 1
+
+        as_user hyprctl instances 2>/dev/null | while read -r label instance _; do
+          [[ $label == instance ]] || continue
+          instance=''${instance%:}
+          as_user HYPRLAND_INSTANCE_SIGNATURE="$instance" hyprctl dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null || true
+          sleep 2
+          as_user HYPRLAND_INSTANCE_SIGNATURE="$instance" hyprctl dispatch 'hl.dsp.dpms({ action = "on" })' >/dev/null || true
+        done || true
+      }
+
       desktop() {
         ${lib.optionalString greetd "systemctl start greetd.service"}
         chvt 1
+        ${lib.optionalString greetd "wake_hyprland"}
       }
 
       case "''${1:-}" in
