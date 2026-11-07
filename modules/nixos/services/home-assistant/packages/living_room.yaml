@@ -17,10 +17,13 @@
 #      wake the button goes twice, the second after that grab. The button also
 #      wakes the Denon if it slept through.
 #
-# The button's code is learned rather than declared: it lives in Home
-# Assistant's storage as device `denon`, command `cbl_sat`. To learn it again,
-# run remote.learn_command on remote.living_room_blaster with those names and
-# press CBL/SAT on the Denon's remote at the Broadlink within 30 seconds.
+# The button's code is declared rather than learned, since this Broadlink
+# stopped hearing remotes once its case had been opened (it still sends). It's
+# the Denon RC-1253's CBL/SAT from Flipper-IRDB
+# (Audio_and_Video_Receivers/Denon/Denon_RC1253.ir): Kaseikyo, vendor 0x3254,
+# command 0x2D3, the frame 54 32 40 31 2D 5C sent least significant bit first
+# in 432µs units, as a Broadlink IR packet (0x26, ticks of 269/8192µs, 0x0D05).
+# Another of the remote's buttons comes out the same way from its entry there.
 
 script:
   irulan_on_tv:
@@ -61,12 +64,10 @@ script:
             target:
               entity_id: remote.living_room_blaster
             data:
-              device: denon
-              command: cbl_sat
+              command: &cbl_sat "b64:JgBjAHE5Dg4ODg4rDg4OKw4ODisODg4ODisODg4ODisOKw4ODg4ODg4ODg4ODg4ODg4OKw4ODisODg4ODg4OKw4rDg4ODg4rDg4OKw4rDg4OKw4ODg4ODg4ODisOKw4rDg4OKw4ODg0F"
           - delay: 8
       - action: remote.send_command
         target:
           entity_id: remote.living_room_blaster
         data:
-          device: denon
-          command: cbl_sat
+          command: *cbl_sat
