@@ -116,6 +116,10 @@ in
           "wemo"
           "yoto"
 
+          # New on Irulan rather than carried over. The MCP server has no YAML
+          # setup, so its config entry is made in the UI.
+          "mcp_server"
+
           # Their entries are disabled on Leia but still exist, and a
           # disabled entry whose integration can't load can't be re-enabled.
           "samsungtv"
