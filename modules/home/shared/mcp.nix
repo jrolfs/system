@@ -53,6 +53,20 @@ in
       sentry.url = "https://mcp.sentry.dev/mcp";
       superhuman.url = "https://mcp.mail.superhuman.com/mcp";
 
+      # Home Assistant's mcp_server integration, whose config entry is made in
+      # its UI. It has no dynamic client registration either, but it accepts a
+      # Client ID Metadata Document, which Claude Code and opencode both send,
+      # so `/mcp` signs in to it like the URLs above. Its OAuth discovery
+      # answers 404 unless home.rolfs.casa is Home Assistant's configured
+      # internal or external URL, and the sign-in fails with it.
+      #
+      # /api/mcp serves the LLM APIs chosen in the integration's options and,
+      # unless they say otherwise, only to an admin. /api/mcp/assist serves
+      # Assist alone, which reaches only the entities exposed to voice
+      # assistants, to any user.
+      home-assistant.url = "https://home.rolfs.casa/api/mcp";
+      home-assistant-assist.url = "https://home.rolfs.casa/api/mcp/assist";
+
       # By store path rather than from PATH, so the server is the one this
       # generation built and nothing else has to install it.
       nixos.command = "${pkgs.mcp-nixos}/bin/mcp-nixos";
