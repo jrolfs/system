@@ -50,11 +50,10 @@ through the living room Broadlink, twice after a wake, because the Apple TV
 wakes over CEC with the TV and takes the receiver's input a few seconds later.
 `av on`, `av off` and `av status` also work by hand, from any shell.
 
-The CBL/SAT button has to be taught to the Broadlink once, and again if Home
-Assistant's storage is ever lost: run `remote.learn_command` (Developer tools,
-Actions) on `remote.living_room_blaster` with device `denon` and command
-`cbl_sat`, then press CBL/SAT on the Denon's remote, a few inches from the
-Broadlink, within 30 seconds. Until then everything but the input switch works.
+The CBL/SAT code is declared in that script, not learned, so there's nothing to
+teach the Broadlink: it's the Denon RC-1253's, taken from a public infrared
+database, and the comment beside it says how to make another button's the same
+way.
 
 ## Where games go
 
