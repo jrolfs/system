@@ -1,0 +1,72 @@
+# Irulan on the living room TV, from whatever state the TV and receiver are
+# in. `av on` (modules/nixos/av.nix) starts this, by hand or from av-wake when
+# Irulan's keyboard, trackpad or a controller is picked up, and returns
+# straight away: with the TV off, all of it takes about twenty seconds.
+#
+# Irulan and the Apple TV both plug into the Denon, which has no network, and
+# Irulan can't speak CEC (its GPU's ports carry none, and neither DisplayPort
+# adapter tried would tunnel it). So:
+#
+#   1. Only if the Frame is off or showing art: Wake-on-LAN, then turn_on.
+#      Fully off, it closes its control API, so turn_on alone has nothing to
+#      talk to, but its network chip still answers a magic packet. A TV that's
+#      already on is left alone, since this can run on any keypress.
+#   2. The Denon's CBL/SAT button, which is Irulan's input, through the
+#      Broadlink. Waking the TV wakes the Denon and the Apple TV over CEC, and
+#      the Apple TV claims the Denon's input a few seconds later, so after a
+#      wake the button goes twice, the second after that grab. The button also
+#      wakes the Denon if it slept through.
+#
+# The button's code is learned rather than declared: it lives in Home
+# Assistant's storage as device `denon`, command `cbl_sat`. To learn it again,
+# run remote.learn_command on remote.living_room_blaster with those names and
+# press CBL/SAT on the Denon's remote at the Broadlink within 30 seconds.
+
+script:
+  irulan_on_tv:
+    alias: Living Room / Show Irulan
+    # A request while one runs adds nothing, since it ends in the same place.
+    mode: single
+    max_exceeded: silent
+    sequence:
+      - if:
+          - condition: or
+            conditions:
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: media_player.living_room_living_room_smart
+                    state: "on"
+              - condition: state
+                entity_id: media_player.living_room_living_room_smart
+                attribute: art_mode_status
+                state: "on"
+        then:
+          - action: wake_on_lan.send_magic_packet
+            data:
+              mac: "10:2b:41:6f:9c:c4"
+          # It answers within a few seconds of the packet and Home Assistant
+          # notices on its next poll. Past this it was on already, or isn't
+          # coming.
+          - wait_template: "{{ is_state('media_player.living_room_living_room_smart', 'on') }}"
+            timeout: 20
+            continue_on_timeout: true
+          - action: media_player.turn_on
+            target:
+              entity_id: media_player.living_room_living_room_smart
+          - delay: 6
+          # A Broadlink that missed this one still sends the last.
+          - action: remote.send_command
+            continue_on_error: true
+            target:
+              entity_id: remote.living_room_blaster
+            data:
+              device: denon
+              command: cbl_sat
+          - delay: 8
+      - action: remote.send_command
+        target:
+          entity_id: remote.living_room_blaster
+        data:
+          device: denon
+          command: cbl_sat
