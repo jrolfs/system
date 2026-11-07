@@ -189,6 +189,18 @@ in
 
           homeassistant.packages = "!include_dir_named ${./packages}";
 
+          # Home Assistant only writes absolute OAuth endpoints and an issuer
+          # into its metadata for a request whose host is its internal or
+          # external URL. Without one matching, the MCP sign-in (mcp.nix) fails
+          # on that metadata. External, though the name only resolves on the
+          # LAN: an internal URL is also what media links sent to speakers
+          # use, and Chromecasts resolve through Google's DNS. Setting this
+          # here locks nothing new in the UI, because time_zone, which the
+          # NixOS module fills in from time.timeZone, already makes every core
+          # setting YAML-only. switchbot_cloud registers its webhook here with
+          # SwitchBot, which can't reach it, so its devices keep polling.
+          homeassistant.external_url = "https://home.rolfs.casa";
+
           # The Docker image starts a bundled go2rtc by itself; anywhere else
           # Home Assistant needs one already running, and fails to set up
           # go2rtc ("URL required in non-docker installs") without this.
