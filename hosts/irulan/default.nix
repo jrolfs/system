@@ -185,16 +185,20 @@
   hardware.bluetooth.enable = true;
   arcade.enable = true;
 
-  # The TV (and the receiver behind it) on and off with the machine, through
-  # Home Assistant's control of the Frame, since this HDMI port has no CEC.
+  # The TV (and the receiver behind it) on with Irulan's keyboard, trackpad or
+  # controllers, through Home Assistant's control of the Frame and the living
+  # room Broadlink, since this HDMI port has no CEC.
   av = {
     enable = true;
     entity = "media_player.living_room_living_room_smart";
-    # By hand only until a CEC adapter arrives. Each start of the station
-    # turned the TV on, so a station stuck restarting after a crash woke the
-    # TV every few seconds, including straight after the Apple TV put it to
-    # standby.
+    # Not with the sessions. Each start of the station turned the TV on, so a
+    # station stuck restarting after a crash woke the TV every few seconds,
+    # including straight after the Apple TV put it to standby.
     automatic = false;
+    # Wakes the Frame from fully off and puts the Denon on CBL/SAT, Irulan's
+    # input (home-assistant/packages/living_room.yaml).
+    script = "script.irulan_on_tv";
+    wake.enable = true;
   };
 
   # Boots to the text console until the desktop's first-boot crash is fixed.

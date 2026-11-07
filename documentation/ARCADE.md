@@ -33,6 +33,29 @@ sessions.boot = "arcade";   # the station starts at boot and is shown
 sessions.boot = "console";  # a text log-in on tty1, both on demand
 ```
 
+## The TV and receiver
+
+Picking up one of Irulan's input devices turns the TV on and puts the Denon on
+CBL/SAT, Irulan's input, from the console, the desktop or the station alike:
+
+- a key press, click or touch on the keyboard or trackpad, after five minutes
+  without one
+- a single press of a controller's PS button
+- a controller connecting
+
+The watcher is `av-wake`, a root service, and it runs `av on`, which starts
+Home Assistant's `script.irulan_on_tv`. That wakes the Frame with Wake-on-LAN
+and takes it out of art mode if it's off, then sends the Denon's CBL/SAT button
+through the living room Broadlink, twice after a wake, because the Apple TV
+wakes over CEC with the TV and takes the receiver's input a few seconds later.
+`av on`, `av off` and `av status` also work by hand, from any shell.
+
+The CBL/SAT button has to be taught to the Broadlink once, and again if Home
+Assistant's storage is ever lost: run `remote.learn_command` (Developer tools,
+Actions) on `remote.living_room_blaster` with device `denon` and command
+`cbl_sat`, then press CBL/SAT on the Denon's remote, a few inches from the
+Broadlink, within 30 seconds. Until then everything but the input switch works.
+
 ## Where games go
 
 Everything lives under `/srv/arcade`, owned by the `arcade` group with the
