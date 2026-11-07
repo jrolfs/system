@@ -19,7 +19,7 @@ let
 
   session = pkgs.writeShellApplication {
     name = "arcade-session";
-    runtimeInputs = [ pkgs.kbd config.systemd.package pkgs.coreutils pkgs.util-linux ]
+    runtimeInputs = [ pkgs.kbd config.systemd.package pkgs.coreutils pkgs.util-linux pkgs.jq ]
       ++ lib.optional greetd config.programs.hyprland.package;
     text = ''
       station() {
@@ -30,12 +30,17 @@ let
         chvt ${vt}
       }
 
-      # Hyprland on tty1, the login screen's or a logged-in desktop, comes
-      # back from the station's VT without a display mode: gamescope changed
-      # the output while it was away, and Hyprland's backend puts off setting
-      # one ("has output but state has no mode, will send a reset state event
-      # later") and never does, which leaves the TV unlit. Turning its DPMS
-      # off and on makes it commit a mode again (found 2026-11-06).
+      # Hyprland on tty1, the login screen's or a logged-in desktop, can come
+      # back from the station's VT unable to light the TV. gamescope's mode
+      # change makes the Denon drop and raise the HDMI link while Hyprland is
+      # in the background, and Hyprland rebuilds the output then, too early to
+      # read the connector's modes: it comes back with none (0 in hyprctl,
+      # against the kernel's 55), so no rule, reload or DPMS change can light
+      # it. Only the connector going away and returning while Hyprland is in
+      # front gives it the list again, which writing `off` and then `detect`
+      # to its sysfs status does. An output that kept its modes gets a forced
+      # renderer reload if it has no size, and a DPMS cycle either way, which
+      # is what woke the login screen. (Found 2026-11-06 and -07.)
       wake_hyprland() {
         local active="" user uid
 
@@ -57,15 +62,36 @@ let
           runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" "$@"
         }
 
-        # Hyprland's own restore runs as the VT comes back; nudge it after.
+        # Hyprland's own restore runs as the VT comes back; look after it.
         sleep 1
 
         as_user hyprctl instances 2>/dev/null | while read -r label instance _; do
           [[ $label == instance ]] || continue
           instance=''${instance%:}
-          as_user HYPRLAND_INSTANCE_SIGNATURE="$instance" hyprctl dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null || true
-          sleep 2
-          as_user HYPRLAND_INSTANCE_SIGNATURE="$instance" hyprctl dispatch 'hl.dsp.dpms({ action = "on" })' >/dev/null || true
+
+          hypr() {
+            as_user HYPRLAND_INSTANCE_SIGNATURE="$instance" hyprctl "$@"
+          }
+
+          hypr -j monitors all 2>/dev/null \
+            | jq -r '.[] | "\(.name) \(.availableModes | length) \(.width)"' \
+            | while read -r name modes width; do
+                if (( modes == 0 )); then
+                  for status in /sys/class/drm/card*-"$name"/status; do
+                    [[ -e $status ]] || continue
+                    echo off > "$status"
+                    sleep 2
+                    echo detect > "$status"
+                  done
+                else
+                  if (( width == 0 )); then
+                    hypr dispatch 'hl.dsp.force_renderer_reload()' >/dev/null || true
+                  fi
+                  hypr dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null || true
+                  sleep 2
+                  hypr dispatch 'hl.dsp.dpms({ action = "on" })' >/dev/null || true
+                fi
+              done || true
         done || true
       }
 
