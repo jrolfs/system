@@ -43,17 +43,35 @@ CBL/SAT, Irulan's input, from the console, the desktop or the station alike:
 - a single press of a controller's PS button
 - a controller connecting
 
-The watcher is `av-wake`, a root service, and it runs `av on`, which starts
-Home Assistant's `script.irulan_on_tv`. That wakes the Frame with Wake-on-LAN
-and takes it out of art mode if it's off, then sends the Denon's CBL/SAT button
+Putting them down puts the TV back in art mode, and the Denon follows it into
+standby over CEC:
+
+- Hyper+Escape on the keyboard (right ⌥ held, then Escape), anywhere
+- TV Off in the desktop's power menu (Ctrl+Alt+Delete)
+- every controller gone for 30 seconds while the station is on screen, whether
+  switched off (hold PS for about ten seconds), flat or out of range, unless
+  the Apple TV is playing something
+
+After any of those but the last, the first key press or touch more than ten
+seconds later turns the TV back on, without the five-minute wait.
+
+The watcher is `av-input`, a root service. It runs `av on`, which starts Home
+Assistant's `script.irulan_on_tv`. That wakes the Frame with Wake-on-LAN and
+takes it out of art mode if it's off, then sends the Denon's CBL/SAT button
 through the living room Broadlink, twice after a wake, because the Apple TV
 wakes over CEC with the TV and takes the receiver's input a few seconds later.
-`av on`, `av off` and `av status` also work by hand, from any shell.
+For off it runs `av off`, which starts `script.irulan_off_tv`, or `av off
+--automatic` for the controllers, which the script ignores while the Apple TV
+plays. `av on`, `av off` and `av status` also work by hand, from any shell.
 
 The CBL/SAT code is declared in that script, not learned, so there's nothing to
 teach the Broadlink: it's the Denon RC-1253's, taken from a public infrared
 database, and the comment beside it says how to make another button's the same
 way.
+
+There's no IR code for the Denon's standby to send instead of relying on CEC.
+Its remote's power button toggles, and the discrete codes older Denons take do
+nothing on this one.
 
 ## Where games go
 

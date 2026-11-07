@@ -19,18 +19,27 @@
 #   on                     when the keyboard or trackpad is used after a while
 #                          idle, a controller's PS button is pressed, or one
 #                          connects
+#   off                    on Hyper+Escape from any keyboard
+#   off --automatic        when the last controller has been gone a while,
+#                          if the arcade station is on screen
 #
-# The middle two only with `av.automatic`, the last only with `av.wake`.
+# The second and third only with `av.automatic`, the fourth only with
+# `av.wake`, and the last two with `av.off.key` and `av.off.controllers`. The
+# desktop's power menu has a TV Off as well, which is `av off`.
 #
 # Turning on takes more than the TV's turn_on when the Frame is fully off, or
-# when the Apple TV beside Irulan has taken the receiver. With `av.script` set,
-# `on` starts that Home Assistant script instead and returns at once; Irulan's
-# is in services/home-assistant/packages/living_room.yaml.
+# when the Apple TV beside Irulan has taken the receiver. With `av.onScript`
+# set, `on` starts that Home Assistant script instead and returns at once.
+# Turning off wants less than turn_off, which on a Frame holds the power button
+# and switches it fully off, past art mode. With `av.offScript` set, `off`
+# starts that script instead, and `--automatic` tells it nobody asked, so it
+# can decline. Irulan's are in
+# services/home-assistant/packages/living_room.yaml.
 #
 # `av.wake` exists because `av.automatic` turned the TV on whenever a session
 # started, and a crash-looping station started one every two seconds. Waking on
 # someone picking up an input device asks for the TV only when it's wanted, and
-# av-wake.rs holds back while the devices are in use.
+# av-input.rs holds back while the devices are in use.
 
 let
   inherit (lib) mkEnableOption mkOption types;
@@ -38,13 +47,26 @@ let
   cfg = config.av;
   token = config.onepassword.templates.home-assistant-token.path;
 
+  orEmpty = value: lib.escapeShellArg (if value == null then "" else value);
+
+  # Its modification time is the last time someone turned the TV off, which
+  # av-input reads. Group av can write it, so an `av off` typed or clicked
+  # counts the same as one from a root service.
+  marker = "/run/av/off";
+
   av = pkgs.writeShellApplication {
     name = "av";
-    runtimeInputs = [ pkgs.curl pkgs.jq ];
+    runtimeInputs = [ pkgs.coreutils pkgs.curl pkgs.jq ];
     text = ''
       urls=(${lib.escapeShellArgs cfg.homeAssistant})
       entity=${lib.escapeShellArg cfg.entity}
-      script=${lib.escapeShellArg (if cfg.script == null then "" else cfg.script)}
+      on_script=${orEmpty cfg.onScript}
+      off_script=${orEmpty cfg.offScript}
+
+      usage() {
+        echo "usage: av on | off [--automatic] | status" >&2
+        exit 64
+      }
 
       if [ ! -r ${lib.escapeShellArg token} ]; then
         echo "av: can't read the Home Assistant token at ${token}" >&2
@@ -71,36 +93,65 @@ let
       # script.turn_on returns as soon as the script has started.
       start() {
         path="/api/services/script/turn_on"
-        request -o /dev/null -H "Content-Type: application/json" -d "{\"entity_id\": \"$script\"}"
+        request -o /dev/null -H "Content-Type: application/json" -d "$1"
       }
 
       case "''${1:-}" in
         on)
-          if [ -n "$script" ]; then
-            start
+          if [ -n "$on_script" ]; then
+            start "{\"entity_id\": \"$on_script\"}"
           else
             service turn_on
           fi
           ;;
-        off) service turn_off ;;
+        off)
+          automatic=false
+          case "''${2:-}" in
+            "") ;;
+            --automatic) automatic=true ;;
+            *) usage ;;
+          esac
+
+          if [ -n "$off_script" ]; then
+            start "{\"entity_id\": \"$off_script\", \"variables\": {\"automatic\": $automatic}}"
+          else
+            service turn_off
+          fi
+
+          # Not for an automatic off, which the script may have declined:
+          # the next keypress would then take the receiver from whatever
+          # kept the TV on.
+          if [ "$automatic" = false ]; then
+            (umask 002 && touch ${marker}) 2>/dev/null || true
+          fi
+          ;;
         status)
           path="/api/states/$entity"
           request | jq -r '"\(.attributes.friendly_name): \(.state)" + (if .attributes.art_mode_status then ", art mode \(.attributes.art_mode_status)" else "" end)'
           ;;
-        *)
-          echo "usage: av on|off|status" >&2
-          exit 64
-          ;;
+        *) usage ;;
       esac
     '';
   };
 
   avBin = lib.getExe av;
 
-  wake = pkgs.rustTool {
-    name = "av-wake";
-    src = ./av-wake.rs;
+  input = pkgs.rustTool {
+    name = "av-input";
+    src = ./av-input.rs;
   };
+
+  inputArguments = [ "--marker" marker ]
+    ++ lib.optionals cfg.wake.enable [
+      "--wake"
+      "--idle" (toString cfg.wake.idle)
+      "--cooldown" (toString cfg.wake.cooldown)
+    ]
+    ++ lib.optional cfg.off.key "--off-key"
+    ++ lib.optionals (cfg.off.controllers != null) (
+      [ "--controllers-gone" (toString cfg.off.controllers) ]
+      ++ lib.optionals (config.arcade.enable or false) [ "--vt" (toString config.arcade.vt) ]
+    );
 
   # A failure to reach Home Assistant must never hold up what it's attached
   # to, so every hook runs `av` with `-` and a short timeout of its own.
@@ -109,6 +160,14 @@ in
 {
   options.av = {
     enable = mkEnableOption "switching the TV and receiver with the machine";
+
+    package = mkOption {
+      type = types.package;
+      readOnly = true;
+      internal = true;
+      default = av;
+      description = "The `av` command, for other modules to run.";
+    };
 
     homeAssistant = mkOption {
       type = types.listOf types.str;
@@ -129,13 +188,24 @@ in
       description = "Switch the TV with the sessions, suspend and power-off, rather than only by hand.";
     };
 
-    script = mkOption {
+    onScript = mkOption {
       type = types.nullOr types.str;
       default = null;
       example = "script.irulan_on_tv";
       description = ''
         A Home Assistant script that `av on` starts in place of the entity's
         turn_on, for whatever else getting Irulan's picture on screen takes.
+      '';
+    };
+
+    offScript = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "script.irulan_off_tv";
+      description = ''
+        A Home Assistant script that `av off` starts in place of the entity's
+        turn_off. It gets an `automatic` variable, true when nobody asked for
+        the off, so that it can decline.
       '';
     };
 
@@ -148,8 +218,9 @@ in
         description = ''
           Seconds without a key press, click or touch after which the next one
           turns the TV on. Typing or using the trackpad in the meantime never
-          does. A controller's PS button or a controller connecting always
-          counts.
+          does, except for the first press ten seconds or more after someone
+          turns the TV off. A controller's PS button or a controller
+          connecting always counts.
         '';
       };
 
@@ -157,6 +228,26 @@ in
         type = types.ints.positive;
         default = 30;
         description = "Seconds after turning the TV on before anything can again.";
+      };
+    };
+
+    off = {
+      key = mkEnableOption ''
+        turning the TV off with Hyper+Escape (Ctrl, Alt, Shift and Super, then
+        Escape) on any keyboard, at the console, the login screen, the desktop
+        or the arcade station
+      '';
+
+      controllers = mkOption {
+        type = types.nullOr types.ints.positive;
+        default = null;
+        example = 30;
+        description = ''
+          Seconds after the last controller disconnects before turning the TV
+          off, or null to leave it on. Only while the arcade station is on
+          screen, where there is one. This is `av off --automatic`, so
+          `offScript` can decline.
+        '';
       };
     };
   };
@@ -174,6 +265,8 @@ in
 
     users.groups.av = { };
     users.users.${userName}.extraGroups = [ "av" ];
+
+    systemd.tmpfiles.rules = [ "d ${dirOf marker} 2770 root av -" ];
 
     environment.systemPackages = [ av ];
 
@@ -229,20 +322,20 @@ in
       arcade-station.serviceConfig.ExecStartPre = [ ("+" + quietly "on") ];
     }))
 
-    (lib.mkIf cfg.wake.enable {
-      av-wake = {
-        description = "Turn the TV on when a keyboard, trackpad or controller is picked up";
+    (lib.mkIf (cfg.wake.enable || cfg.off.key || cfg.off.controllers != null) {
+      av-input = {
+        description = "Turn the TV on and off as the keyboard, trackpad and controllers are picked up and put down";
         wantedBy = [ "multi-user.target" ];
         wants = [ "network-online.target" ];
         after = [ "network-online.target" ];
         serviceConfig = {
-          ExecStart = "${lib.getExe wake} --idle ${toString cfg.wake.idle} --cooldown ${toString cfg.wake.cooldown} -- ${avBin} on";
+          ExecStart = "${lib.getExe input} ${lib.escapeShellArgs inputArguments} -- ${avBin}";
           Restart = "always";
           RestartSec = 5;
 
           # Root, to read every input device the way arcade-hotkey does. It
-          # only reads them and makes one request to Home Assistant, so it
-          # gets no view of /home and a /tmp of its own.
+          # only reads them and makes requests to Home Assistant, so it gets
+          # no view of /home and a /tmp of its own.
           ProtectHome = true;
           PrivateTmp = true;
         };

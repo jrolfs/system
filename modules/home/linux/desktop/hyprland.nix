@@ -172,6 +172,17 @@ lib.mkIf (osConfig.desktop.enable or false) {
       -- straight to the shell so that every lock, this one and suspend's
       -- alike, takes the one path through hypridle (lock.nix).
       hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"), about("Shell", "Lock"))
+    ''
+    + lib.optionalString (osConfig.av.off.key or false) # lua
+    ''
+
+      -- The TV to art mode, which takes the receiver with it. av-input acts on
+      -- it from any keyboard on any virtual terminal (modules/nixos/av.nix), so
+      -- this only lists it and keeps it from the focused window.
+      hl.bind(hyper .. " + ESCAPE", hl.dsp.no_op(), about("Shell", "TV off"))
+    ''
+    + # lua
+    ''
 
       -- Screenshots ------------------------------------------------------------
 

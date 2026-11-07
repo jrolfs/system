@@ -8,7 +8,8 @@ import "../../components"
 // A row of action tiles, keyboard-navigable (←/→, Enter, Esc). The destructive ones
 // (logout/reboot/poweroff) arm on first activation and need a second hit to confirm, so
 // one stray Enter can't nuke your session. Logout stops the uwsm session; lock goes to
-// LockState via GlobalState; suspend/reboot/poweroff shell out to systemctl. The accent
+// LockState via GlobalState; suspend/reboot/poweroff shell out to systemctl, and TV Off
+// (where Nix turned it on) to `av off`, which puts the TV in art mode. The accent
 // marks the selected action; red marks one that's armed and waiting on you to confirm.
 Item {
     id: root
@@ -19,11 +20,12 @@ Item {
 
     readonly property var actions: [
         { id: "lock",     label: "Lock",      icon: "lock",    confirm: false },
+        { id: "tv",       label: "TV Off",    icon: "tv",      confirm: false },
         { id: "suspend",  label: "Suspend",   icon: "night",   confirm: false },
         { id: "logout",   label: "Log Out",   icon: "logout",  confirm: true  },
         { id: "reboot",   label: "Reboot",    icon: "restart", confirm: true  },
         { id: "poweroff", label: "Power Off", icon: "power",   confirm: true  }
-    ]
+    ].filter(a => a.id !== "tv" || Config.tvOff)
     property int index: 0
     property string armed: ""
     onIndexChanged: armed = ""
@@ -37,6 +39,7 @@ Item {
         // Hyprland's own exit stays as the fallback for a session started without uwsm.
         if (id === "logout")        Quickshell.execDetached(["sh", "-c", "if command -v uwsm >/dev/null && uwsm check is-active >/dev/null 2>&1; then exec uwsm stop; else exec hyprctl dispatch exit; fi"]);
         else if (id === "lock")     GlobalState.requestLock();
+        else if (id === "tv")       Quickshell.execDetached(["av", "off"]);
         else if (id === "suspend")  Quickshell.execDetached(["systemctl", "suspend"]);
         else if (id === "reboot")   Quickshell.execDetached(["systemctl", "reboot"]);
         else if (id === "poweroff") Quickshell.execDetached(["systemctl", "poweroff"]);

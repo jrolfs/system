@@ -129,6 +129,7 @@ Singleton {
     property alias batteryLowThreshold: adapter.batteryLowThreshold // % at which battery reads "low"
     property alias nightLightTemp: adapter.nightLightTemp     // Kelvin
     property alias wallpaperFade: adapter.wallpaperFade       // ms crossfade when the wallpaper changes
+    property alias tvOff: adapter.tvOff                       // a TV Off in the power menu, through `av off`
 
     // ── control center layout ──
     // A FREE-PLACEMENT grid (iOS 18 / macOS Tahoe style: gaps allowed, they persist) of
@@ -379,6 +380,7 @@ Singleton {
             property int batteryLowThreshold: 20
             property int nightLightTemp: 3000
             property int wallpaperFade: 450
+            property bool tvOff: false
             // control center layout (see ccRegistry / CcLayout.js)
             property string ccLayout: ""
         }
