@@ -43,20 +43,24 @@
 #   machine (sign in through `/mcps`).
 
 let
+  # The entry's name decides how it loads: opencode looks for a terminal client
+  # plugin's entry point as `tui.*` in its directory, ignoring package.json
+  # exports, while the server plugins here load from `index.ts`.
   localPlugin =
-    name: source:
+    name: entry: source:
     pkgs.runCommandLocal name
       {
         nativeBuildInputs = [ pkgs.nodejs ];
       }
       ''
         cp ${source}/*.ts .
-        node --test index.test.ts
-        install -Dm644 index.ts $out/index.ts
+        node --test ${entry}.test.ts
+        install -Dm644 ${entry}.ts $out/${entry}.ts
       '';
 
-  syncPlugin = localPlugin "opencode-claude-sync" ./opencode-sync;
-  routingPlugin = localPlugin "opencode-task-router" ./opencode-router;
+  syncPlugin = localPlugin "opencode-claude-sync" "index" ./opencode-sync;
+  routingPlugin = localPlugin "opencode-task-router" "index" ./opencode-router;
+  paddingPlugin = localPlugin "opencode-kitty-padding" "tui" ./opencode-kitty-padding;
 
   # opencode provider ID to the bootstrap secrets.json entry holding its key.
   # Qwen would be `alibaba` (pay-as-you-go DashScope, international endpoint)
@@ -192,6 +196,10 @@ in
           package = "vimcode@git+https://github.com/oribarilan/vimcode.git#v0.19.2";
           options.updateCheck = false;
         }
+
+        # The padding handling the neovim config gives nvim, for the same
+        # panes (jrolfs/neovim, kitty-padding.lua).
+        { package = "${paddingPlugin}"; }
       ];
     };
 
