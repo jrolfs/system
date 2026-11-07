@@ -23,7 +23,7 @@ let
   # whatever the user manager was handed, which need not include the profile
   # these would otherwise come from, and a missing one fails silently: the
   # visualiser stays flat, Night Light never warms.
-  runtimePath = lib.makeBinPath [
+  runtimePath = lib.makeBinPath ([
     osConfig.programs.hyprland.package # hyprctl
     osConfig.programs.uwsm.package
     osConfig.systemd.package # systemctl, matching the running manager
@@ -37,7 +37,7 @@ let
     pkgs.hyprsunset
     pkgs.procps # pkill
     pkgs.wl-clipboard
-  ] ++ lib.optional (osConfig.av.enable or false) osConfig.av.package;
+  ] ++ lib.optional (osConfig.av.enable or false) osConfig.av.package);
 
   # Stylix's Qt target sets QT_QPA_PLATFORMTHEME and QT_STYLE_OVERRIDE for the
   # session, to theme Qt apps through qt5ct and Kvantum. The shell is a Qt app
