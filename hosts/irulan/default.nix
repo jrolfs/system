@@ -185,9 +185,9 @@
   hardware.bluetooth.enable = true;
   arcade.enable = true;
 
-  # The TV (and the receiver behind it) on with Irulan's keyboard, trackpad or
-  # controllers, through Home Assistant's control of the Frame and the living
-  # room Broadlink, since this HDMI port has no CEC.
+  # The TV (and the receiver behind it) on and off with Irulan's keyboard,
+  # trackpad or controllers, through Home Assistant's control of the Frame and
+  # the living room Broadlink, since this HDMI port has no CEC.
   av = {
     enable = true;
     entity = "media_player.living_room_living_room_smart";
@@ -196,9 +196,14 @@
     # including straight after the Apple TV put it to standby.
     automatic = false;
     # Wakes the Frame from fully off and puts the Denon on CBL/SAT, Irulan's
-    # input (home-assistant/packages/living_room.yaml).
-    script = "script.irulan_on_tv";
+    # input, and puts the Frame back to art mode, which takes the Denon with it
+    # (home-assistant/packages/living_room.yaml).
+    onScript = "script.irulan_on_tv";
+    offScript = "script.irulan_off_tv";
     wake.enable = true;
+    off.key = true;
+    # Long enough to plug in a cable when a controller goes flat mid-game.
+    off.controllers = 30;
   };
 
   # Boots to the text console until the desktop's first-boot crash is fixed.

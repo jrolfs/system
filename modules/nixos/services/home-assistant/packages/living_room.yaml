@@ -1,7 +1,8 @@
 # Irulan on the living room TV, from whatever state the TV and receiver are
-# in. `av on` (modules/nixos/av.nix) starts this, by hand or from av-wake when
-# Irulan's keyboard, trackpad or a controller is picked up, and returns
-# straight away: with the TV off, all of it takes about twenty seconds.
+# in, and the TV put away again. `av on` and `av off` (modules/nixos/av.nix)
+# start these, by hand or from av-input when Irulan's keyboard, trackpad or
+# controllers are picked up or put down, and return straight away: with the
+# TV off, coming on takes about twenty seconds.
 #
 # Irulan and the Apple TV both plug into the Denon, which has no network, and
 # Irulan can't speak CEC (its GPU's ports carry none, and neither DisplayPort
@@ -24,6 +25,14 @@
 # command 0x2D3, the frame 54 32 40 31 2D 5C sent least significant bit first
 # in 432µs units, as a Broadlink IR packet (0x26, ticks of 269/8192µs, 0x0D05).
 # Another of the remote's buttons comes out the same way from its entry there.
+#
+# Off is art mode, the way the Frame is normally left. Set from here it acts
+# like the remote's power button: the Frame tells the HDMI devices to stand by
+# over CEC, and the Denon and the Apple TV both go. CEC is the only way to put
+# the Denon in standby. Its remote's one power button toggles, so sent blind it
+# would as often turn the Denon on, and the older Denon protocol's discrete
+# power codes (2-225 and 2-226, Flipper-IRDB's Denon_AVR_Receiver.ir) do
+# nothing on this model. (Both tried 2026-11-07.)
 
 script:
   irulan_on_tv:
@@ -71,3 +80,37 @@ script:
           entity_id: remote.living_room_blaster
         data:
           command: *cbl_sat
+
+  irulan_off_tv:
+    alias: Living Room / Put Irulan Away
+    mode: single
+    max_exceeded: silent
+    fields:
+      automatic:
+        name: Automatic
+        description: >-
+          Nobody asked for this, so it gives way to the Apple TV: while that's
+          playing, the TV stays on.
+        selector:
+          boolean:
+    sequence:
+      # An on still under way would press CBL/SAT after this, and the button
+      # wakes the Denon.
+      - action: script.turn_off
+        target:
+          entity_id: script.irulan_on_tv
+      - condition: template
+        value_template: >-
+          {{ not (automatic | default(false))
+             or not is_state('media_player.living_room_tv', 'playing') }}
+      # Asked of a Frame that's fully off, art mode would turn it on.
+      - condition: state
+        entity_id: media_player.living_room_living_room_smart
+        state: "on"
+      - condition: state
+        entity_id: media_player.living_room_living_room_smart
+        attribute: art_mode_status
+        state: "off"
+      - action: samsungtv_smart.set_art_mode
+        target:
+          entity_id: media_player.living_room_living_room_smart

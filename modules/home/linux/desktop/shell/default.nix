@@ -37,7 +37,7 @@ let
     pkgs.hyprsunset
     pkgs.procps # pkill
     pkgs.wl-clipboard
-  ];
+  ] ++ lib.optional (osConfig.av.enable or false) osConfig.av.package;
 
   # Stylix's Qt target sets QT_QPA_PLATFORMTHEME and QT_STYLE_OVERRIDE for the
   # session, to theme Qt apps through qt5ct and Kvantum. The shell is a Qt app
@@ -93,6 +93,8 @@ let
     # The rounded screen corners imitate a laptop panel. A TV's picture is
     # square to its bezel, so on Irulan they only clip the wallpaper.
     screenCorners = false;
+
+    tvOff = osConfig.av.enable or false;
 
     # Without the Wi-Fi tile: Irulan is wired and runs no NetworkManager for
     # it to talk to.
