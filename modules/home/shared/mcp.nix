@@ -56,9 +56,10 @@ in
       # Home Assistant's mcp_server integration, whose config entry is made in
       # its UI. It has no dynamic client registration either, but it accepts a
       # Client ID Metadata Document, which Claude Code and opencode both send,
-      # so `/mcp` signs in to it like the URLs above. Its OAuth discovery
-      # answers 404 unless home.rolfs.casa is Home Assistant's configured
-      # internal or external URL, and the sign-in fails with it.
+      # so `/mcp` signs in to it like the URLs above. That depends on
+      # home.rolfs.casa being Home Assistant's external_url, which the
+      # home-assistant module sets. Otherwise its OAuth metadata has relative
+      # endpoints and no issuer, and clients reject it.
       #
       # /api/mcp serves the LLM APIs chosen in the integration's options and,
       # unless they say otherwise, only to an admin. /api/mcp/assist serves
