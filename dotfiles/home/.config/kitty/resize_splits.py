@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 """Grow, shrink or equalize the splits in the active tab, animated.
 
 kitty's resize_window and `layout_action equalize` jump straight to the new
@@ -16,7 +17,7 @@ from time import monotonic
 
 from kitty.fast_data_types import add_timer, remove_timer
 
-SCALE = 1.2
+SCALE = 1.3
 DURATION = 0.15
 FRAME_INTERVAL = 1 / 60
 
@@ -30,7 +31,7 @@ MIN_SHARE = 0.1
 STATE_ATTRIBUTE = "_resize_splits_animation"
 
 
-def main(args):
+def main():
     pass
 
 
