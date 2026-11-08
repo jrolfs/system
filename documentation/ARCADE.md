@@ -40,7 +40,9 @@ CBL/SAT, Irulan's input, from the console, the desktop or the station alike:
 
 - a key press, click or touch on the keyboard or trackpad, after five minutes
   without one
-- a single press of a controller's PS button
+- a quick tap of a controller's PS button. Holding it doesn't count, so a
+  controller can be switched off (PS held for about ten seconds) while the
+  Apple TV has the receiver, without taking the input back
 - a controller connecting
 
 Putting them down puts the TV back in art mode, and the Denon follows it into

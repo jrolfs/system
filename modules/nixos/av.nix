@@ -17,7 +17,7 @@
 #   off                    before suspend and at power-off (a reboot leaves
 #                          the TV alone, since the machine is coming back)
 #   on                     when the keyboard or trackpad is used after a while
-#                          idle, a controller's PS button is pressed, or one
+#                          idle, a controller's PS button is tapped, or one
 #                          connects
 #   off                    on Hyper+Escape from any keyboard
 #   off --automatic        when the last controller has been gone a while,
@@ -219,8 +219,8 @@ in
           Seconds without a key press, click or touch after which the next one
           turns the TV on. Typing or using the trackpad in the meantime never
           does, except for the first press ten seconds or more after someone
-          turns the TV off. A controller's PS button or a controller
-          connecting always counts.
+          turns the TV off. A tap of a controller's PS button or a
+          controller connecting always counts.
         '';
       };
 
