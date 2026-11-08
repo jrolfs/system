@@ -12,7 +12,10 @@
 //     default). Every press restarts that wait, so typing never fires twice
 //     and switching the TV off from the keyboard isn't undone by the next
 //     keystroke. The first press after starting counts as after a wait.
-//   - A controller's PS/Home button, on a single press.
+//   - A tap of a controller's PS/Home button: let go within half a second.
+//     Holding it is how a DualSense is switched off, and that hold starts
+//     with the same press, so counting presses would take the receiver from
+//     the Apple TV just to put a controller away.
 //   - A controller connecting. A DualSense that's off wakes and connects
 //     when its PS button is pressed, but that press happens before its event
 //     device exists, so the connection is all there is to see. Controllers
@@ -104,6 +107,7 @@ const MODIFIERS: [(u16, u8); 8] = [
 const IDLE: Duration = Duration::from_secs(300);
 const COOLDOWN: Duration = Duration::from_secs(30);
 const AFTER_OFF: Duration = Duration::from_secs(10);
+const TAP: Duration = Duration::from_millis(500);
 
 // Polled rather than notified, as in arcade-hotkey: inotify isn't in std, and
 // two seconds is nothing next to how long the TV takes to come on.
@@ -302,14 +306,23 @@ fn classify(capabilities: &str) -> Option<Class> {
     }
 }
 
-// A pointer's or a controller's key event. Presses only: 0 is the release and
-// 2 the repeat a held key sends, and neither is someone arriving.
-fn trigger_for(class: Class, code: u16, value: i32) -> Option<Trigger> {
-    match class {
-        _ if value != 1 => None,
-        Class::Keyboard | Class::Pointer => Some(Trigger::Press),
-        Class::Gamepad if code == BTN_MODE => Some(Trigger::HomeButton),
-        Class::Gamepad => None,
+// A controller's key event, given when the PS button went down, if it's
+// down. Times are the events' own, so a slow read can't stretch a tap.
+fn controller_trigger(home: &mut Option<Duration>, code: u16, value: i32, time: Duration) -> Option<Trigger> {
+    if code != BTN_MODE {
+        return None;
+    }
+
+    match value {
+        1 => {
+            *home = Some(time);
+            None
+        }
+        0 => home
+            .take()
+            .filter(|&down| time.saturating_sub(down) <= TAP)
+            .map(|_| Trigger::HomeButton),
+        _ => None,
     }
 }
 
@@ -508,7 +521,7 @@ fn consider(trigger: Trigger, class: Class, name: &str, state: &Arc<State>) {
             eprintln!("av-input: {what} on {name} after {} idle", describe(idle))
         }
         (Trigger::Press, None) => eprintln!("av-input: {what} on {name}, first press since starting"),
-        (Trigger::HomeButton, _) => eprintln!("av-input: PS button on {name}"),
+        (Trigger::HomeButton, _) => eprintln!("av-input: PS button tapped on {name}"),
         (Trigger::Arrival, _) => eprintln!("av-input: {what} connected ({name})"),
         (Trigger::OffKey, _) => eprintln!("av-input: Hyper+Escape on {name}"),
     }
@@ -519,11 +532,14 @@ fn consider(trigger: Trigger, class: Class, name: &str, state: &Arc<State>) {
 fn watch(mut device: File, name: String, class: Class, state: Arc<State>) {
     let mut buffer = [0u8; EVENT_SIZE];
     let mut modifiers = Modifiers::default();
+    let mut home = None;
 
     // A read error is the device going away (switched off, out of range,
     // unplugged), which ends this thread. The scan starts another if it comes
     // back.
     while device.read_exact(&mut buffer).is_ok() {
+        let seconds = i64::from_ne_bytes(buffer[0..8].try_into().unwrap());
+        let microseconds = i64::from_ne_bytes(buffer[8..16].try_into().unwrap());
         let kind = u16::from_ne_bytes([buffer[16], buffer[17]]);
         let code = u16::from_ne_bytes([buffer[18], buffer[19]]);
         let value = i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
@@ -532,9 +548,14 @@ fn watch(mut device: File, name: String, class: Class, state: Arc<State>) {
             continue;
         }
 
+        let time = Duration::from_secs(seconds.max(0) as u64) + Duration::from_micros(microseconds.max(0) as u64);
+
         let trigger = match class {
             Class::Keyboard => keyboard_trigger(&mut modifiers, code, value, state.options.off_key),
-            _ => trigger_for(class, code, value),
+            // Presses only: 0 is the release, and neither it nor a held
+            // button is someone arriving.
+            Class::Pointer => (value == 1).then_some(Trigger::Press),
+            Class::Gamepad => controller_trigger(&mut home, code, value, time),
         };
 
         if let Some(trigger) = trigger {
@@ -883,12 +904,45 @@ mod tests {
         assert!(arrived(Some(&asleep), "event15"));
     }
 
+    // Feeds one controller (code, value, milliseconds) events and returns what
+    // each decided.
+    fn buttons(events: &[(u16, i32, u64)]) -> Vec<Trigger> {
+        let mut home = None;
+
+        events
+            .iter()
+            .filter_map(|&(code, value, millis)| {
+                controller_trigger(&mut home, code, value, Duration::from_millis(millis))
+            })
+            .collect()
+    }
+
     #[test]
-    fn only_controllers_respond_to_the_ps_button_alone() {
-        assert_eq!(trigger_for(Class::Gamepad, BTN_MODE, 1), Some(Trigger::HomeButton));
-        assert_eq!(trigger_for(Class::Gamepad, BTN_MODE, 0), None);
-        assert_eq!(trigger_for(Class::Gamepad, 0x130, 1), None);
-        assert_eq!(trigger_for(Class::Pointer, BTN_LEFT as u16, 1), Some(Trigger::Press));
+    fn a_tap_of_the_ps_button_counts_when_let_go() {
+        assert_eq!(buttons(&[(BTN_MODE, 1, 1000)]), []);
+        assert_eq!(buttons(&[(BTN_MODE, 1, 1000), (BTN_MODE, 0, 1120)]), [Trigger::HomeButton]);
+        assert_eq!(buttons(&[(BTN_MODE, 1, 1000), (BTN_MODE, 0, 1500)]), [Trigger::HomeButton]);
+    }
+
+    #[test]
+    fn holding_the_ps_button_never_counts() {
+        // Let go after a second, and the hold that switches a DualSense off,
+        // whose device goes away before any release.
+        assert_eq!(buttons(&[(BTN_MODE, 1, 1000), (BTN_MODE, 0, 2000)]), []);
+        assert_eq!(buttons(&[(BTN_MODE, 1, 1000)]), []);
+    }
+
+    #[test]
+    fn each_tap_of_a_triple_counts() {
+        let taps = [0, 300, 600].map(|start| [(BTN_MODE, 1, start), (BTN_MODE, 0, start + 100)]);
+        assert_eq!(buttons(&taps.concat()), [Trigger::HomeButton; 3]);
+    }
+
+    #[test]
+    fn other_buttons_and_a_stray_release_are_nothing() {
+        assert_eq!(buttons(&[(BTN_SOUTH as u16, 1, 0), (BTN_SOUTH as u16, 0, 100)]), []);
+        assert_eq!(buttons(&[(BTN_MODE, 0, 100)]), []);
+        assert_eq!(buttons(&[(BTN_MODE, 1, 0), (BTN_SOUTH as u16, 1, 50), (BTN_MODE, 0, 100)]), [Trigger::HomeButton]);
     }
 
     #[test]
