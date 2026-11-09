@@ -46,6 +46,7 @@ in
     # server that arrives through a plugin, as these do.
     servers = lib.filterAttrs (_: server: server.enabled or null != false) {
       airtable.url = "https://mcp.airtable.com/mcp";
+      datadog.url = "https://mcp.datadoghq.com/v1/mcp";
       figma.url = "https://mcp.figma.com/mcp";
       granola.url = "https://mcp.granola.ai/mcp";
       linear.url = "https://mcp.linear.app/mcp";
