@@ -94,6 +94,7 @@ overlays/          nixpkgs overlays, plus pin.nix for single-package pins
 automator/         macOS Automator workflows
 vscodium/          separate flake building VSCodium with extensions
 links/             convenience symlink to /Library/LaunchDaemons
+.github/workflows/  CI: build.yml builds every host on its own platform, and jrolfs/bootstrap calls it
 ```
 
 ### modules/darwin
