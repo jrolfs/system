@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Carry a worktree's OpenCode conversation along with its `wt handoff` snapshot.
+#
+# Snapshots are pushed to the repository's remote, and a pushed ref can be
+# fetched by anyone who can read the repository, listed in GitHub's UI or not.
+# Several of these repositories are public, so the conversation (tool output,
+# file contents, whatever an MCP server returned) is encrypted to the age
+# identity claude-sync already provisions on every machine
+# (modules/home/shared/claude-sync.nix). It is compressed first, since git can't
+# compress ciphertext.
+#
+# OpenCode keeps a session's ID on import, and an import whose ID already exists
+# does nothing and still exits 0. So a conversation coming back to the machine
+# it left has to replace the copy there, and only does when that copy has
+# nothing the incoming one lacks: every local message must be in the incoming
+# conversation. Otherwise both machines carried it on, and the local copy stays.
+#
+# Child sessions travel with their parent and import after it, because OpenCode
+# rejects a child whose parent doesn't exist yet.
+#
+#   wt-opencode-session pick <worktree>            the session a handoff would carry
+#   wt-opencode-session export <worktree> <file>   write it, encrypted, to <file>
+#   wt-opencode-session import <file> <worktree>   import what export wrote, - for stdin
+#
+# Exit status: 0 done, 1 error, 2 deliberately skipped (said why), 3 no
+# conversation to carry.
+set -euo pipefail
+
+key=$HOME/.claude-sync/age-key.txt
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# OpenCode 2.2.5 loses the end of large output written to a pipe, at a multiple
+# of 64 KiB, so every response goes to $work/response.json and is read from
+# there. A call stays outside $(…), so an unreachable server fails the command
+# rather than reading as an empty answer.
+api() {
+  opencode api get "$1" >"$work/response.json"
+}
+
+export_session() {
+  opencode session export "$1" >"$2"
+  jq -e --arg id "$1" '.info.id == $id' "$2" >/dev/null || {
+    echo "OpenCode exported an incomplete $1" >&2
+    return 1
+  }
+}
+
+# Both exit rather than return on a failed request, so a server that can't be
+# reached never reads as "not running" or "not here".
+running() {
+  api /api/session/active || exit 1
+  jq -e --arg id "$1" '.data | has($id)' "$work/response.json" >/dev/null
+}
+
+exists() {
+  opencode api get "/api/session/$1" >"$work/lookup.json" 2>"$work/lookup.err" && return 0
+  jq -e '._tag == "SessionNotFoundError"' "$work/lookup.json" >/dev/null 2>&1 && return 1
+  cat "$work/lookup.err" "$work/lookup.json" >&2
+  exit 1
+}
+
+# The worktree's most recently updated top-level conversation. Its directory is
+# compared exactly as well, in case the server's filter also matches below it.
+pick() {
+  local top=$1 query id
+  query=$(jq -rn --arg directory "$top" '"directory=\($directory | @uri)&parentID=null&limit=20"')
+  api "/api/session?$query" || return 1
+  id=$(jq -r --arg directory "$top" \
+    'first(.data[] | select(.location.directory == $directory) | .id) // empty' "$work/response.json")
+  [ -n "$id" ] || return 3
+  printf '%s\n' "$id"
+  if running "$id"; then
+    echo "$id is still running; hand off again once it's idle to bring it along" >&2
+    return 2
+  fi
+}
+
+# Sets $family to the session and its descendants, breadth first, so every
+# parent precedes its children in the bundle.
+collect_family() {
+  local index=0 child
+  family=("$1")
+  while [ $index -lt ${#family[@]} ]; do
+    api "/api/session?parentID=${family[$index]}&limit=1000"
+    while IFS= read -r child; do
+      family+=("$child")
+    done < <(jq -r '.data[].id' "$work/response.json")
+    index=$((index + 1))
+  done
+}
+
+export_bundle() {
+  local top=$1 out=$2 id files=() session
+  [ -r "$key" ] || {
+    echo "no age identity at $key; claude-sync's activation writes it" >&2
+    return 1
+  }
+  id=$(pick "$top") || return
+  collect_family "$id"
+  for session in "${family[@]}"; do
+    export_session "$session" "$work/$session.json"
+    files+=("$work/$session.json")
+  done
+  jq -s . "${files[@]}" | gzip -9 | age -e -i "$key" -o "$out"
+  printf '%s\n' "$id"
+}
+
+import_bundle() {
+  local bundle=$1 top=$2 id count relation index
+  [ "$bundle" != - ] || bundle=/dev/stdin
+  age -d -i "$key" "$bundle" | gunzip >"$work/bundle.json"
+  jq -e 'type == "array" and length > 0' "$work/bundle.json" >/dev/null
+  id=$(jq -r '.[0].info.id' "$work/bundle.json")
+  count=$(jq length "$work/bundle.json")
+  for ((index = 0; index < count; index++)); do
+    jq ".[$index]" "$work/bundle.json" >"$work/$index.json"
+  done
+
+  if exists "$id"; then
+    if running "$id"; then
+      echo "left OpenCode session $id alone: it is running here" >&2
+      return 2
+    fi
+    export_session "$id" "$work/local.json"
+    relation=$(jq -rn --slurpfile here "$work/local.json" --slurpfile incoming "$work/0.json" '
+      if $here[0].messages == $incoming[0].messages then "same"
+      elif ($here[0].messages | map(.id)) - ($incoming[0].messages | map(.id)) == [] then "behind"
+      else "diverged" end')
+    case $relation in
+      same)
+        echo "OpenCode session $id is already up to date"
+        return 0
+        ;;
+      diverged)
+        echo "left OpenCode session $id alone: it has messages here the handed-off copy lacks." >&2
+        echo "  to take the handed-off copy instead, opencode session delete $id first" >&2
+        return 2
+        ;;
+    esac
+    opencode session delete "$id" >/dev/null
+  fi
+
+  for ((index = 0; index < count; index++)); do
+    opencode session import "$work/$index.json" --directory "$top" >/dev/null
+  done
+  exists "$id" || {
+    echo "OpenCode did not import $id" >&2
+    return 1
+  }
+  echo "imported OpenCode session $id ($count session(s)): opencode --session $id"
+}
+
+case ${1-} in
+  pick) pick "${2:?usage: wt-opencode-session pick <worktree>}" ;;
+  export) export_bundle "${2:?usage: wt-opencode-session export <worktree> <file>}" "${3:?usage: wt-opencode-session export <worktree> <file>}" ;;
+  import) import_bundle "${2:?usage: wt-opencode-session import <file> <worktree>}" "${3:?usage: wt-opencode-session import <file> <worktree>}" ;;
+  *)
+    echo "usage: wt-opencode-session pick|export|import ..." >&2
+    exit 1
+    ;;
+esac

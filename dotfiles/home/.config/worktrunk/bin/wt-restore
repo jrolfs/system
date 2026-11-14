@@ -4,9 +4,12 @@
 # each path's Claude sessions are resumable the moment the tree exists. Run from
 # anywhere inside the repository (main checkout or any worktree).
 #
+# A snapshot that carried an OpenCode conversation has it imported into the
+# restored worktree once the files are in place. wt-opencode-session decides
+# whether a copy already here can be replaced.
+#
 # Home differs by platform (/Users/<you> on the Macs, /home/<you> on Linux), so
-# a path is resolved against this one. claude-sync only runs on the Macs, so a
-# worktree restored on Linux arrives without its Claude threads.
+# a path is resolved against this one.
 #
 # Patterns match the snapshot name, and --all takes every snapshot another host
 # pushed, so arriving on a new machine is one command rather than one per
@@ -47,9 +50,45 @@ fi
 
 host=$(hostname -s)
 main_dir=$(basename "$(git worktree list --porcelain | sed -n 's/^worktree //p' | head -1)")
+helper=$(cd "$(dirname "$0")" && pwd)/wt-opencode-session
 
 trailer() {
   git log -1 --format="%(trailers:key=$1,valueonly=true)" "refs/wip/$2" | head -1
+}
+
+# The conversation commit a snapshot names, once the fetch has brought it here.
+# A later handoff of the same worktree replaces the conversation ref, so an
+# older snapshot can name a commit origin no longer has.
+session_commit() {
+  local commit
+  commit=$(trailer Wt-OpenCode "$1")
+  [ -n "$commit" ] && git cat-file -e "$commit^{commit}" 2>/dev/null && printf '%s' "$commit"
+}
+
+session_id() {
+  git log -1 --format='%(trailers:key=Wt-Session,valueonly=true)' "$1" | head -1
+}
+
+# A conversation that is skipped on purpose (running here, or carried on here
+# since it left) is reported by the helper and isn't a failed restore.
+restore_session() {
+  local name=$1 path=$2 commit status=0
+  if ! commit=$(session_commit "$name"); then
+    [ -z "$(trailer Wt-OpenCode "$name")" ] \
+      || echo "note: $name's OpenCode session is no longer on origin; a later handoff replaced it" >&2
+    return 0
+  fi
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "note: opencode isn't installed here, so $name's session stays on origin" >&2
+    return 0
+  fi
+  git cat-file blob "$commit:session.json.gz.age" | "$helper" import - "$path" || status=$?
+  # Restoring again won't retry: the overlaid worktree is dirty now, and restore
+  # skips a dirty worktree.
+  if [ "$status" -ne 0 ]; then
+    echo "  to import it later: git cat-file blob ${commit:0:12}:session.json.gz.age | $helper import - $path" >&2
+  fi
+  [ "$status" -ne 1 ]
 }
 
 # wt-handoff records `~/…`. Snapshots from before it did carry an absolute path
@@ -66,7 +105,7 @@ local_path() {
 
 # The snapshot names are only known after the fetch, so take every ref and pick
 # from what landed.
-git fetch origin "+refs/wip/*:refs/wip/*"
+git fetch origin "+refs/wip/*:refs/wip/*" "+refs/wip-opencode/*:refs/wip-opencode/*"
 
 snapshots=()
 while IFS= read -r name; do
@@ -111,7 +150,7 @@ fi
 
 restore_one() {
   local name=$1
-  local wip path branch from parent current
+  local wip path branch from parent current commit carrying=
 
   wip=$(git rev-parse "refs/wip/$name")
   path=$(local_path "$(trailer Wt-Path "$name")")
@@ -125,10 +164,13 @@ restore_one() {
   fi
 
   if [ "$dry" = yes ]; then
+    if commit=$(session_commit "$name"); then
+      carrying=", then import OpenCode session $(session_id "$commit")"
+    fi
     if [ -d "$path" ]; then
-      echo "would overlay $name onto $path (branch $branch, from ${from:-unknown})"
+      echo "would overlay $name onto $path (branch $branch, from ${from:-unknown})$carrying"
     else
-      echo "would create $path (branch $branch, from ${from:-unknown}) and overlay $name"
+      echo "would create $path (branch $branch, from ${from:-unknown}) and overlay $name$carrying"
     fi
     return 0
   fi
@@ -164,6 +206,8 @@ restore_one() {
   git restore --source="$wip" --worktree -- :/
 
   echo "restored $name at $path (branch $branch, snapshot from ${from:-unknown})"
+
+  restore_session "$name" "$path"
 }
 
 # One pull for the whole batch, ahead of the trees, so a restored path's

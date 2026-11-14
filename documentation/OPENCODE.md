@@ -109,17 +109,52 @@ The plugin does not coordinate transfers with a separate Claude process or a
 manually invoked `claude-sync`; avoid simultaneous manual transfers.
 
 `wt handoff` already pushes `claude-sync`, and `wt restore` pulls it before
-restoring worktrees. Those aliases need no changes for shared memory. A handoff
+restoring worktrees, which covers shared memory. A handoff
 does not wait for an extraction agent that is still running, so let extraction
 finish before moving machines or push again afterwards.
 
-## What does not sync
+## Moving a conversation with `wt handoff`
 
-OpenCode's conversations live in its own database. Neither the memory plugin
-nor `wt handoff` converts them to Claude transcripts or transfers that database.
-Do not sync the live SQLite file with `claude-sync` or a file-sync service.
-Worktree files and durable memories transfer; resuming an OpenCode conversation
-on a different machine remains separate work.
+OpenCode's conversations live in its own SQLite database. Do not sync that live
+file with `claude-sync` or a file-sync service. A conversation moves between
+machines explicitly, with the worktree it belongs to:
+
+```sh
+wt handoff --preview    # shows which session each worktree would carry
+wt handoff              # files, plus this worktree's latest conversation
+wt restore <worktree>   # on the other machine: files, then the conversation
+wt handoff --no-session # files only
+```
+
+A handoff exports the worktree's most recently updated top-level session and
+its child sessions through `opencode session export`. It compresses them and
+encrypts them to claude-sync's age identity (`~/.claude-sync/age-key.txt`,
+which activation provisions on every host), then commits the result to
+`refs/wip-opencode/<worktree>`. The snapshot names that commit in a
+`Wt-OpenCode` trailer.
+
+The encryption is not optional. Anyone who can read the repository can fetch a
+pushed ref, whether or not GitHub's UI lists it, and `jrolfs/system` is public.
+An export holds tool output, file contents and MCP results as well as the
+messages, and `--sanitize` strips exactly the parts needed to continue.
+
+The conversation ref is replaced on each handoff rather than chained like the
+snapshots, so earlier copies become unreachable instead of accumulating. A
+handoff deletes any conversation ref that no snapshot names any more.
+
+A session that is still running is left behind with a warning. Hand off again
+once it is idle. Restore imports into the restored worktree, keeping the
+session ID. When that ID already exists locally, which is the normal case on
+the way back, restore replaces the local copy only if every local message is in
+the incoming one. If both machines continued the conversation, the local copy
+is kept, and the helper says how to take the incoming copy instead. The
+`opencode session import` exit status does not show an ID conflict, so the
+helper confirms each import by reading the session back.
+
+OpenCode 2.2.5 truncates large `session export` output written to a pipe, at a
+multiple of 64 KiB. The helper writes exports to files and checks that each
+parses before using it. `dotfiles/home/.config/worktrunk/bin/wt-opencode-session`
+implements this, and `wt-handoff` and `wt-restore` call it.
 
 ## Automatic permissions
 

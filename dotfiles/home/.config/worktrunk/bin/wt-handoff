@@ -15,6 +15,14 @@
 # The main checkout is left out of --all, since recreating it is a clone rather
 # than a `git worktree add`. Name it explicitly to include it.
 #
+# The worktree's latest OpenCode conversation goes along too, encrypted, on
+# refs/wip-opencode/<worktree-dir> (see wt-opencode-session). It is a separate
+# ref, replaced on every handoff, because each snapshot chains onto the last
+# and a conversation stored inside one would keep every earlier copy reachable
+# for good. The snapshot names the conversation commit in a Wt-OpenCode trailer,
+# which is how restore pairs them and how a conversation ref left without a
+# snapshot gets cleaned up. --no-session leaves conversations behind.
+#
 # The whole batch goes up in one push, so --no-verify (or --push-arg=ARG for
 # anything else git push takes) is worth having when a pre-push hook would
 # otherwise reject work that is mid-flight by definition.
@@ -22,6 +30,7 @@ set -euo pipefail
 
 all=no
 dry=no
+sessions=yes
 patterns=()
 push_args=()
 
@@ -29,6 +38,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --all) all=yes ;;
     -n | --dry-run | --preview) dry=yes ;;
+    --no-session) sessions=no ;;
     --no-verify) push_args+=(--no-verify) ;;
     --push-arg)
       shift
@@ -36,7 +46,7 @@ while [ $# -gt 0 ]; do
       ;;
     --push-arg=*) push_args+=("${1#*=}") ;;
     -h | --help)
-      echo "usage: wt handoff [--all] [--no-verify] [--push-arg=ARG] [pattern...] [--preview]"
+      echo "usage: wt handoff [--all] [--no-session] [--no-verify] [--push-arg=ARG] [pattern...] [--preview]"
       exit 0
       ;;
     -*)
@@ -101,18 +111,60 @@ fi
 # the remote has: without this fetch a snapshot taken on another machine since
 # the last one here would be the tip, and the push would be rejected rather than
 # quietly overwriting it.
+#
+# Conversation refs are replaced rather than extended, so each push leases the
+# value fetched here, and --prune keeps that value honest about refs deleted
+# on the remote since.
 if [ "$dry" = no ]; then
   git fetch -q origin "+refs/wip/*:refs/wip/*" || true
+  [ "$sessions" = no ] || git fetch -q --prune origin "+refs/wip-opencode/*:refs/wip-opencode/*" || true
 fi
 
+if [ "$sessions" = yes ] && ! command -v opencode >/dev/null 2>&1; then
+  sessions=no
+fi
+helper=$(dirname "$0")/wt-opencode-session
+
 # A throwaway copy of the index so a snapshot never touches the real one. One
-# file reused across worktrees, since each pass overwrites it wholesale.
+# file reused across worktrees, since each pass overwrites it wholesale. The
+# conversation bundle is reused the same way.
 index=$(mktemp)
-trap 'rm -f "$index"' EXIT
+bundle=$(mktemp)
+trap 'rm -f "$index" "$bundle"' EXIT
 
 pushed=()
 refspecs=()
+leases=()
 skipped=0
+
+# Commits this worktree's conversation to refs/wip-opencode/<dir> and sets
+# $session_commit, or fails when there is nothing to carry. A conversation that
+# can't go (still running, no age identity) is reported and left behind rather
+# than holding up the worktree's files.
+carry_session() {
+  local top=$1 dir=$2 ref=refs/wip-opencode/$2 id blob tree status=0
+  id=$("$helper" export "$top" "$bundle") || status=$?
+  case $status in
+    0) ;;
+    3) return 1 ;;
+    *)
+      echo "  left $dir's OpenCode session behind" >&2
+      return 1
+      ;;
+  esac
+
+  blob=$(git -C "$top" hash-object -w "$bundle")
+  tree=$(printf '100644 blob %s\tsession.json.gz.age\n' "$blob" | git -C "$top" mktree)
+  session_commit=$(git -C "$top" commit-tree "$tree" \
+    -m "opencode: $dir" \
+    -m "Wt-Session: $id
+Wt-Host: $(hostname -s)")
+
+  leases+=("--force-with-lease=$ref:$(git -C "$top" rev-parse --verify --quiet "$ref" || true)")
+  git -C "$top" update-ref "$ref" "$session_commit"
+  refspecs+=("$ref:$ref")
+  session_id=$id
+}
 
 for top in "${selected[@]}"; do
   dir=$(key_for "$top")
@@ -128,7 +180,16 @@ for top in "${selected[@]}"; do
 
   if [ "$dry" = yes ]; then
     changes=$(git -C "$top" status --porcelain | wc -l | tr -d ' ')
-    echo "would push refs/wip/$dir ($branch @ ${head:0:7}, $changes change(s))"
+    note=
+    if [ "$sessions" = yes ]; then
+      status=0
+      id=$("$helper" pick "$top" 2>/dev/null) || status=$?
+      case $status in
+        0) note=", OpenCode session $id" ;;
+        2) note=", leaving OpenCode session $id behind: still running" ;;
+      esac
+    fi
+    echo "would push refs/wip/$dir ($branch @ ${head:0:7}, $changes change(s)$note)"
     continue
   fi
 
@@ -155,24 +216,49 @@ for top in "${selected[@]}"; do
   recorded=$top
   case $top in "$HOME"/*) recorded="~/${top#"$HOME"/}" ;; esac
 
+  session_trailer=
+  session_id=
+  if [ "$sessions" = yes ] && carry_session "$top" "$dir"; then
+    session_trailer=$'\n'"Wt-OpenCode: $session_commit"
+  fi
+
   # One -m per paragraph, and git only parses the final paragraph as trailers,
-  # so all three must share it.
+  # so they must all share it.
   commit=$(git -C "$top" commit-tree "$tree" "${parents[@]}" \
     -m "wip: $dir" \
     -m "Wt-Path: $recorded
 Wt-Branch: $branch
-Wt-Host: $(hostname -s)")
+Wt-Host: $(hostname -s)$session_trailer")
 
   git -C "$top" update-ref "refs/wip/$dir" "$commit"
   refspecs+=("refs/wip/$dir:refs/wip/$dir")
-  echo "snapshot refs/wip/$dir ($branch @ ${head:0:7})"
+  echo "snapshot refs/wip/$dir ($branch @ ${head:0:7}${session_id:+, OpenCode session $session_id})"
   pushed+=("$dir")
 done
 
 if [ ${#pushed[@]} -gt 0 ]; then
+  # A conversation ref no snapshot names any more would otherwise stay on the
+  # remote for good: its worktree was handed off since without a conversation,
+  # or wt relocate filed the snapshot under a new name.
+  orphans=()
+  if [ "$sessions" = yes ]; then
+    named=$(git -C "$main_top" for-each-ref \
+      --format='%(trailers:key=Wt-OpenCode,valueonly,separator=%x0A)' refs/wip/)
+    while read -r sha ref; do
+      grep -qxF "$sha" <<<"$named" && continue
+      leases+=("--force-with-lease=$ref:$sha")
+      refspecs+=(":$ref")
+      orphans+=("$ref")
+    done < <(git -C "$main_top" for-each-ref --format='%(objectname) %(refname)' refs/wip-opencode/)
+  fi
+
   # One push for the batch, so a pre-push hook runs once rather than per
   # worktree, and --no-verify has one place to land.
-  git -C "$main_top" push ${push_args+"${push_args[@]}"} origin "${refspecs[@]}"
+  git -C "$main_top" push ${push_args+"${push_args[@]}"} ${leases+"${leases[@]}"} origin "${refspecs[@]}"
+
+  for ref in ${orphans+"${orphans[@]}"}; do
+    git -C "$main_top" update-ref -d "$ref"
+  done
 
   # Sessions for these worktrees ride claude-sync; push mid-flight transcripts
   # now rather than waiting for their Stop hooks.

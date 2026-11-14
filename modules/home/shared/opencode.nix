@@ -27,13 +27,13 @@
 #   commit and keeps everything in one SQLite database
 #   (~/.local/share/opencode/opencode.db).
 # - Conversation sync: claude-sync carries the shared memory below, not
-#   opencode's SQLite database. Never sync that live file. Resuming opencode
-#   conversations on another host still needs a separate design.
+#   opencode's SQLite database. Never sync that live file.
 # - Moving threads: claude-mv-project re-keys a store when its directory moves,
 #   and wt-relocate runs it per worktree. Probably moot if commit keying holds
 #   across worktrees.
-# - Handoff: wt handoff/restore carry a worktree's dirty state and push/pull
-#   claude-sync, shared memory included. They don't transfer opencode threads.
+# - Handoff: wt handoff/restore carry a worktree's dirty state, push/pull
+#   claude-sync (shared memory included), and carry the worktree's latest
+#   opencode conversation, encrypted (documentation/OPENCODE.md).
 # - Zed: claude-zed-sync carries and moves Zed's agent-panel thread records, and
 #   resume-zed / claude-zed-threads list ACP threads with resume commands.
 #   Check what opencode's ACP agent keeps itself.
@@ -303,7 +303,6 @@ in
 
         # This must load before the memory plugin: pull before its catch-up and
         # recall, then push completed memory writes, including its hidden forks.
-        # The existing encrypted backend and wt handoff/restore remain unchanged.
         {
           package = "${syncPlugin}";
           options.command = lib.getExe pkgs.claude-sync;

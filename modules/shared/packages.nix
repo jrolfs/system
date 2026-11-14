@@ -88,6 +88,10 @@
     pkgs.pinentry-curses
     pkgs.yubikey-manager
 
+    # wt handoff encrypts OpenCode conversations with claude-sync's age
+    # identity before pushing them, and wt restore decrypts them.
+    pkgs.age
+
     #
     # Development tools
 
