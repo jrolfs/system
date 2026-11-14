@@ -26,6 +26,16 @@ in
 {
   spicetify-cli = masterPkgs.spicetify-cli;
 
+  # Upstream ties tab visibility to whether tab navigation exists at all, and
+  # its notification transport can't replace or dismiss earlier alerts. Keep
+  # both policies in opencode.nix without poking at private TUI renderables.
+  opencode = super.opencode.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./opencode/client-ui.patch ];
+    postPatch = (old.postPatch or "") + ''
+      cp ${./opencode/kitty-notification.ts} packages/tui/src/kitty-notification.ts
+    '';
+  });
+
   # The 8.12 desktop app ships chrome_crashpad_handler, which the 2026-10-24
   # nixpkgs package leaves with a generic Linux interpreter, so NixOS refuses
   # to run it, Chromium trips a check, and every launch dies with SIGTRAP

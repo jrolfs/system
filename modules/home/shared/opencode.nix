@@ -188,6 +188,33 @@ in
     # old client's). The `system` theme takes the terminal's own colors.
     cli = {
       theme.name = "system";
+      animations = true;
+
+      # Keep the tab set and navigation alive while reclaiming its screen space.
+      # Visibility is transient, so showing it doesn't rewrite these defaults.
+      tabs = {
+        mode = "on";
+        layout = "vertical";
+        visible = false;
+        indicators = "status";
+      };
+      keybinds."session.tab.toggle" = "<leader>shift+t";
+
+      session = {
+        sidebar = "hide";
+        scrollbar = true;
+        image_preview = true;
+      };
+      prompt.image_preview = true;
+      diffs.wrap = "none";
+
+      # The local client patch reuses one Kitty notification ID, clears it on
+      # focus, and expires it even if the client is killed before cleanup.
+      attention = {
+        notifications = true;
+        sound = false;
+        notification_timeout = 15000;
+      };
 
       # V2 support is experimental, so keep the upstream-recommended pin.
       # Updates stay explicit here rather than prompting from every client.

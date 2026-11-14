@@ -1,0 +1,134 @@
+diff --git a/packages/tui/src/app.tsx b/packages/tui/src/app.tsx
+--- a/packages/tui/src/app.tsx
++++ b/packages/tui/src/app.tsx
+@@ -119,4 +119,5 @@
+ const sessionTabBindingCommands = [
++  "session.tab.toggle",
+   "session.tab.next",
+   "session.tab.previous",
+   "session.tab.next_unread",
+@@ -611,9 +612,11 @@
+   }
+   const terminalTitleEnabled = () => config.data.terminal?.title ?? true
+   const pasteSummaryEnabled = () => config.data.prompt?.paste !== "full"
++  const [tabsShown, setTabsShown] = createSignal(config.data.tabs.visible)
++  createEffect(() => setTabsShown(config.data.tabs.visible))
+   const tabsVertical = () =>
+     config.data.tabs.layout === "vertical" && sessionTabsFitVertically(dimensions().width, tabsResize.size())
+-  const tabsAvailable = () => sessionTabs.enabled() && sessionTabs.tabs().length > 0 && route.data.type !== "plugin"
++  const tabsAvailable = () => tabsShown() && sessionTabs.enabled() && sessionTabs.tabs().length > 0 && route.data.type !== "plugin"
+   const fullscreenPanel = () =>
+     route.data.type === "session" &&
+     panels.current()?.sessionID === route.data.sessionID &&
+@@ -845,6 +848,13 @@
+         enabled: () => !sessionTabs.enabled(),
+         run: () => local.session.quickSwitch(i + 1),
+       })),
++      {
++        name: "session.tab.toggle",
++        title: "Toggle session tabs",
++        category: "Session",
++        enabled: sessionTabs.enabled,
++        run: () => setTabsShown((shown) => !shown),
++      },
+       {
+         name: "session.tab.next",
+         title: "Next tab",
+diff --git a/packages/tui/src/config/index.tsx b/packages/tui/src/config/index.tsx
+--- a/packages/tui/src/config/index.tsx
++++ b/packages/tui/src/config/index.tsx
+@@ -99,6 +99,9 @@
+   attention: Schema.optional(
+     Schema.Struct({
+       notifications: Schema.optional(Schema.Boolean).annotate({ description: "Show system notifications" }),
++      notification_timeout: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
++        description: "Close Kitty notifications after this many milliseconds",
++      }),
+       sound: Schema.optional(Schema.Boolean).annotate({ description: "Play attention sounds" }),
+       volume: Schema.optional(
+         Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
+@@ -196,6 +199,9 @@
+       layout: Schema.optional(Schema.Literals(["horizontal", "vertical"])).annotate({
+         description: "Show tabs in a horizontal strip or vertical sidebar",
+       }),
++      visible: Schema.optional(Schema.Boolean).annotate({
++        description: "Show the tab strip initially, without disabling tab navigation",
++      }),
+       indicators: Schema.optional(Schema.Literals(["status", "numbers"])).annotate({
+         description: "Show status icons or always show tab numbers",
+       }),
+@@ -305,6 +311,7 @@
+     ...input,
+     attention: {
+       notifications: input.attention?.notifications ?? false,
++      notification_timeout: input.attention?.notification_timeout ?? 15000,
+       sound: input.attention?.sound ?? false,
+       volume: input.attention?.volume ?? 0.4,
+       sound_pack: input.attention?.sound_pack ?? "opencode.default",
+@@ -331,6 +338,7 @@
+       enabled: tabsMode === "on" || (tabsMode === "auto" && (options.environment ?? process.env).HERDR_ENV !== "1"),
+       scope: input.tabs?.scope ?? "cwd",
+       layout: input.tabs?.layout ?? "horizontal",
++      visible: input.tabs?.visible ?? true,
+       indicators: input.tabs?.indicators ?? "status",
+     },
+   }
+diff --git a/packages/tui/src/config/keybind.ts b/packages/tui/src/config/keybind.ts
+--- a/packages/tui/src/config/keybind.ts
++++ b/packages/tui/src/config/keybind.ts
+@@ -111,6 +111,7 @@
+   "session.list": keybind("<leader>l", "List all sessions"),
+   "open.menu": keybind("ctrl+o", "Open recent sessions and projects"),
+   "session.tab.next": keybind("ctrl+tab,alt+down", "Switch to next open session tab"),
++  "session.tab.toggle": keybind("none", "Show or hide the session tab strip"),
+   "session.tab.previous": keybind("ctrl+shift+tab,alt+up", "Switch to previous open session tab"),
+   "session.tab.history.back": keybind("none", "Go back in session tab history"),
+   "session.tab.history.forward": keybind("ctrl+i", "Go forward in session tab history"),
+diff --git a/packages/tui/src/attention.ts b/packages/tui/src/attention.ts
+--- a/packages/tui/src/attention.ts
++++ b/packages/tui/src/attention.ts
+@@ -11,6 +11,8 @@
+ import { Schema } from "effect"
+ import stripAnsi from "strip-ansi"
+ import * as TuiAudio from "./audio"
++import { writeSync } from "node:fs"
++import { createKittyNotification } from "./kitty-notification"
+ import {
+   defaultSoundPath,
+   questionSoundPath,
+@@ -90,9 +92,18 @@
+   let focus: FocusState = "unknown"
+   let disposed = false
+   const audio = input.audio ?? TuiAudio
++  // A replacement ID bounds Notification Center history to one alert per client.
++  const kitty = process.env.TERM === "xterm-kitty" && process.stdout.isTTY
++    ? createKittyNotification({
++        id: `opencode-${process.pid}`,
++        expireMs: input.config.attention.notification_timeout,
++        write: (command) => writeSync(process.stdout.fd, command),
++      })
++    : undefined
+-
++
+   const onFocus = () => {
+     focus = "focused"
++    kitty?.clear()
+   }
+   const onBlur = () => {
+     focus = "blurred"
+@@ -141,6 +152,7 @@
+         const notification = shouldNotify
+           ? (() => {
+               try {
++                if (kitty) return kitty.notify(message, normalizeText(request.title, DEFAULT_TITLE, TITLE_LIMIT))
+                 return input.renderer.triggerNotification(
+                   message,
+                   normalizeText(request.title, DEFAULT_TITLE, TITLE_LIMIT),
+@@ -182,6 +194,7 @@
+     dispose() {
+       if (disposed) return
+       disposed = true
++      kitty?.clear()
+       input.renderer.off("focus", onFocus)
+       input.renderer.off("blur", onBlur)
+     },

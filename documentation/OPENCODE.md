@@ -6,6 +6,33 @@ options through Home Manager. Supporting plugin sources live beside it under
 `overlays/default.nix`. Do not edit the generated
 `~/.config/opencode/opencode.json` directly.
 
+## Terminal preferences
+
+`programs.opencode.cli` in `modules/home/shared/opencode.nix` declares the
+terminal preferences written to `~/.config/opencode/cli.json`. Changes made
+through OpenCode's settings screen can be overwritten by the next switch.
+
+Session tabs start hidden. Press **Ctrl+x, Shift+t** to show or hide the vertical
+stack on the left. Tab navigation and the open tab set remain active while the
+stack is hidden. The visibility toggle lasts for this client only and does not
+rewrite `cli.json`. Narrow windows retain OpenCode's horizontal fallback.
+
+Notifications are enabled without sound for completed sessions, errors and
+requests for input, using OpenCode's existing event handling and focus checks.
+Child-session completions do not create desktop notifications. In Kitty, one
+notification ID per OpenCode client replaces the preceding alert instead of
+accumulating notifications. Focusing the client or closing it removes its alert.
+The alert also expires after 15 seconds if the client cannot clean up. Clicking
+it focuses the originating terminal pane, not a particular OpenCode session.
+Other terminals retain OpenCode's normal notification transport.
+
+The `tabs.visible`, `session.tab.toggle`, and `attention.notification_timeout`
+settings come from `overlays/opencode/client-ui.patch`, not upstream OpenCode.
+The overlay also supplies the Kitty notification transport. The
+patch keeps these policies declarative without depending on private render-tree
+structure or running a second notification event watcher. Revisit it when
+upstream offers equivalent controls.
+
 ## What is shared
 
 - Instructions: the repository's `CLAUDE.md` files and `~/.claude/CLAUDE.md`.
