@@ -15,6 +15,10 @@ let
   system = import (builtins.fetchTree nixpkgs) { inherit (pkgs.stdenv.hostPlatform) system; };
 in
 {
+  # The repo's own shell, Node and `audit`, which direnv would otherwise drop
+  # here: it loads only the nearest .envrc, and this directory has one.
+  imports = [ ../../../../devenv.nix ];
+
   # kitty 0.49 embeds Python 3.14.
   packages = [
     system.python314
