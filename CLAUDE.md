@@ -50,6 +50,9 @@ velja-rules diff        # has Velja drifted from modules/darwin/velja/rules.toml
 velja-rules capture --write   # pull GUI-authored rules back into rules.toml
 velja-rules apply       # push rules.toml into Velja without a full switch
 
+audit new <host> <service> <slug>   # start a maintenance script, see below
+audit run <script> [args...]        # run one, appending its output to a .log beside it
+
 icn                     # apply custom app icons (icons/apply.sh)
 mkbk / mkrs             # mackup backup / restore
 spoon                   # the Hammerspoon CLI (`hs` is homeshick)
@@ -71,7 +74,11 @@ a nested worktree session would also load main's copy.
 ## Layout
 
 ```
-flake.nix          inputs, the three host configurations, the `glide` devShell
+flake.nix          inputs, the three host configurations, the `glide` devShell,
+                   and the `audit` package and devenv module rolfs.lan imports
+devenv.nix         the repo's shell (Node 26 and `audit`), loaded by the root .envrc
+devenv/audit/      that Node and the `audit` command, shared with rolfs.lan
+audit/             maintenance scripts and their logs, see "Maintenance scripts"
 modules/
   shared/          system configuration every host gets, macOS and Linux alike
     packages.nix     packages every machine gets
@@ -180,6 +187,39 @@ would otherwise have to be rediscovered.
   That overlay is also where the non-obvious flags are explained; add tools
   through it rather than calling `rustc` or `$CC` from a module. `sidecar.swift`
   stays Swift because it needs the macOS SDK's private frameworks.
+
+## Maintenance scripts
+
+A one-off change to a machine or service, done by an agent or by hand over an
+API, SSH or a database, is written as a TypeScript script and committed, not
+run as ad-hoc shell. The script and its log are the record of what changed and
+why. Rust tools (above) are for things the system ships; these are for things
+that were done once.
+
+- **Node runs them directly.** The root `.envrc` loads `devenv.nix`, which puts
+  Node 26 (the current LTS, which strips types with no flag) and `audit` on
+  PATH. Only erasable syntax works: no enums, namespaces or parameter
+  properties, and local imports name their `.ts` extension. No `package.json`
+  and no dependencies: `fetch`, `node:child_process` and `node:fs` cover it.
+- **Layout is `audit/<host>/<service>/<YYYY-MM-DD>-<slug>.ts`**, dated the day
+  it was written, e.g. `audit/ala/homebrew/2026-11-22-adopt-1password.ts`.
+  `audit new <host> <service> <slug>` creates one from a template.
+- **Run it with `audit run <script>`**, which appends the output to a `.log`
+  beside the script with a header for the time, arguments, Node version and
+  commit. Commit the log with the script.
+- **Dry run by default, `--apply` to change anything**, and safe to re-run: act
+  only on what isn't already in the target state, so a rerun reports the
+  current state. Run the dry run first and read it.
+- **The opening comment says what changed and why**, the way modules here do,
+  and records any setting it had to change along the way and its old value.
+- **Secrets come from the environment**, never the script or its log. Put them
+  in `.env.direnv` (gitignored, loaded by the `.envrc`), and print nothing a
+  secret could appear in.
+- **Home-network scripts go in rolfs.lan, not here.** This repo is public, and
+  anything about Leia, Irulan's services, kath or the *arrs names hosts,
+  paths and library contents. rolfs.lan is private and imports the same
+  `audit` through this flake's `devenvModules.audit`. Machine and dotfile
+  scripts belong here.
 
 ## Gotchas
 
