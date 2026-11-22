@@ -17,18 +17,6 @@
         "type": "github"
       }
     },
-    "from": {
-      "flake": false,
-      "locked": {
-        "path": "./dotfiles/home/.config/kitty/",
-        "type": "path"
-      },
-      "original": {
-        "path": "./dotfiles/home/.config/kitty/",
-        "type": "path"
-      },
-      "parent": []
-    },
     "nixpkgs": {
       "inputs": {
         "nixpkgs-src": "nixpkgs-src"
@@ -68,7 +56,6 @@
     "root": {
       "inputs": {
         "devenv": "devenv",
-        "from": "from",
         "nixpkgs": "nixpkgs"
       }
     }

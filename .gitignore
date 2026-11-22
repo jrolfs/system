@@ -10,3 +10,8 @@ node_modules/
 
 # devenv state, beside each devenv.nix
 .devenv/
+
+# direnv state, plus the root .envrc's untracked secrets and local additions
+.direnv/
+.env.direnv
+.envrc.local

@@ -189,5 +189,17 @@
             packages = [ pkgs.nodejs_24 pkgs.pnpm ];
           };
         });
+
+      # Node and the `audit` command for maintenance scripts, see
+      # devenv/audit/default.nix. Exported so rolfs.lan runs its scripts on the
+      # same toolchain as this repo, from whichever revision it has locked.
+      packages = forSystems (system:
+        import ./devenv/audit { pkgs = nixpkgs.legacyPackages.${system}; });
+
+      # For a devenv.nix in another repo, with this flake as an input:
+      # `imports = [ inputs.system.devenvModules.audit ];`
+      devenvModules.audit = { pkgs, ... }:
+        let tools = self.packages.${pkgs.stdenv.hostPlatform.system};
+        in { packages = [ tools.nodejs tools.audit ]; };
     };
 }
