@@ -260,6 +260,7 @@ in
       "google-chrome@beta"
       "google-chrome@canary"
       "grammarly-desktop"
+      "granola"
       "hammerspoon"
       "home-assistant"
       "jrolfs/tap/lingon-pro"
