@@ -271,6 +271,7 @@ in
       "loom"
       "moom"
       "obsidian"
+      "opencode-desktop"
       "orbstack"
       "plex"
       "plexamp"
