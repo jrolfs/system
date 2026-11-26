@@ -6,11 +6,10 @@
 
 {
   imports = [
-    ./bar
     ./hyprland.nix
     ./kanata-layers.nix
     ./lock.nix
-    ./notifications.nix
+    ./shell
     ./vicinae.nix
   ];
 }

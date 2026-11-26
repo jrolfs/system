@@ -69,8 +69,8 @@ in
     ./browsers.nix
     ./icloud.nix
     ./raycast.nix
+    ./switch-panel.nix
     ./wallpaper.nix
-    ./zed.nix
   ];
 
   # Provide ~/.zshrc.darwin — sourced by ~/.zshrc when uname is Darwin.

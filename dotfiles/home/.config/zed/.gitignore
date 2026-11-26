@@ -2,3 +2,11 @@
 # table that every process opening the env stamps with its pid, so it churns
 # on each Zed launch.
 prompts/prompts-library-db.*.mdb/
+
+# Exported by hand from zed://schemas/settings for Neovim's jsonls. Zed builds
+# it from the installed version, fonts, themes and extensions, so it is
+# per-machine and goes stale with every update. After saving, drop Zed's
+# leading `//` comment line and replace the `zed://schemas/settings/lsp/...`
+# refs, which only Zed can resolve and which stop jsonls validating at all:
+#   jq 'walk(if type == "object" and ((."$ref"? // "") | startswith("zed://")) then {} else . end)'
+settings.schema.json

@@ -131,6 +131,7 @@ let
       }
 
       main() {
+      ${cfg.delegate}
         local update=no pull=no mode=auto branch= tree ${cfg.locals}
         local -a rest inputs
 
@@ -207,6 +208,16 @@ in
       type = types.lines;
       default = "";
       description = "zsh run after --pull and --update, just before the switch.";
+    };
+
+    delegate = mkOption {
+      type = types.lines;
+      default = "";
+      description = ''
+        zsh run first, before any argument is read, that may hand the whole
+        nix-switch off to something else and `return` its status. The
+        arguments are still in "$@".
+      '';
     };
   };
 

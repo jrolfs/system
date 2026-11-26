@@ -24,6 +24,7 @@ let
   excludeApps = (import ./excluded-apps.nix).${hostname} or [ ];
 
   apps = lib.filterAttrs (name: _: !lib.elem name excludeApps) {
+    "CARROT Weather" = 993487541;
     "Cloud Baby Monitor" = 517602535;
     "Fantastical" = 975937182;
     "Flighty" = 1358823008;

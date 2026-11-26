@@ -6,6 +6,8 @@
 {
   imports = [
     ../shared
+    ./av.nix
+    ./bluetooth.nix
     ./keyboard
     ./onepassword-secrets.nix
     ./sudo.nix

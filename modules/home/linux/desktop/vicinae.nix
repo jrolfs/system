@@ -1,9 +1,10 @@
 { lib, osConfig, ... }:
 
-# Vicinae, the launcher on ⌘Space: Raycast's role on the Macs, and close enough
-# in design that the habits carry over.
+# Vicinae, on ⌘⌥Space: Raycast's role on the Macs, and close enough in design
+# that the habits carry over. ⌘Space is the shell's own launcher now; this
+# stays for its extensions.
 #
-# Runs as a user service so ⌘Space only has to show a window that already
+# Runs as a user service so ⌘⌥Space only has to show a window that already
 # exists. Hyprland blurs behind it (hyprland.nix), so the window's own
 # opacity here is what sets how much of the desktop shows through.
 
@@ -12,8 +13,7 @@ let
   fonts = import ../../../theme/fonts.nix;
 
   rounding = 10;
-  # More opaque than the bar: the launcher is read closely and the bar only
-  # glanced at.
+  # Fairly opaque, since the launcher is read closely.
   opacity = 0.88;
 in
 lib.mkIf (osConfig.desktop.enable or false) {
@@ -73,7 +73,7 @@ lib.mkIf (osConfig.desktop.enable or false) {
 
       font.normal.family = fonts.sans.family;
 
-      # No tray: the bar has no tray area to put it in.
+      # No tray: the shell has no tray area to put it in.
       tray.enabled = false;
 
       telemetry.system_info = false;

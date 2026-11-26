@@ -26,6 +26,15 @@ in
 {
   spicetify-cli = masterPkgs.spicetify-cli;
 
+  # The 8.12 desktop app ships chrome_crashpad_handler, which the 2026-10-24
+  # nixpkgs package leaves with a generic Linux interpreter, so NixOS refuses
+  # to run it, Chromium trips a check, and every launch dies with SIGTRAP
+  # before a window appears. nixpkgs master patches the whole bundle with
+  # autoPatchelfHook instead. Drop this once nixpkgs' _1password-gui/linux.nix
+  # uses autoPatchelfHook too. Linux only: the Macs run the Homebrew app.
+  _1password-gui =
+    if super.stdenv.hostPlatform.isLinux then masterPkgs._1password-gui else super._1password-gui;
+
   # azure-cli depends on fabric, which nixpkgs marks broken against invoke 3
   # (nixpkgs moved to invoke 3.0.3 by 2026-10-24). allowBroken turns that into
   # a failed build rather than an evaluation error. The previous lock's
@@ -234,6 +243,24 @@ in
       chmod u+w $out
       ln -s ${modules}/node_modules $out/node_modules
     '';
+
+  # A Telegram client for opencode (github:grinev/opencode-telegram-bot),
+  # run on Irulan against the agent VM's server
+  # (modules/nixos/services/agent-vm.nix). Not in nixpkgs. Built from its
+  # tagged source rather than run through `npx …@latest`, so the version only
+  # moves with this file.
+  opencode-telegram-bot = super.buildNpmPackage rec {
+    pname = "opencode-telegram-bot";
+    version = "0.26.5";
+    src = super.fetchFromGitHub {
+      owner = "grinev";
+      repo = "opencode-telegram-bot";
+      rev = "v${version}";
+      hash = "sha256-Mjku5+XNECO0kQNX2zls18IAlf8kJElaFwTTHfo9xuU=";
+    };
+    npmDepsHash = "sha256-eDXmrs3c8uktWq/rZAVdtemoq/5Fo/fn6G02B4sM9nE=";
+    meta.mainProgram = "opencode-telegram";
+  };
 
   # The Claude Code helper scripts kept in dotfiles/home/.claude/bin, built into
   # a package so they land on PATH with the rest of the profile instead of

@@ -14,10 +14,10 @@
 ;;             chords become the Ctrl shortcuts Linux apps expect
 ;;   cmd       held ⌘ in `mac`
 ;;   fn        held Tab: hjkl are arrows
-;;   alt       held ⌥ in `mac`: Space starts the wm chord, ←→⌫ act on words
-;;   alt-plain held ⌥ in `plain`: the chord only
-;;   wm        one key after ⌥Space: hjkl become Hyper+hjkl, for the window
-;;             manager, the way Moom's ⌥Space chord works on the Mac
+;;   alt       held ⌥ in `mac`: ←→⌫ act on words
+;;
+;; ⌥Space is left alone. Hyprland binds it to its window mode, the way Moom
+;; binds it on the Mac (modules/home/linux/desktop/hyprland.nix).
 
 (defsrc
   1      2      3      4      5      6      7      8      9
@@ -51,16 +51,11 @@
   ;; their Ctrl equivalents.
   cmd (multi lmet (layer-while-held cmd))
 
-  ;; ⌥ stays pressed too. In both versions Space starts the window manager
-  ;; chord while it's held. The `mac` layer's version also makes ⌥←, ⌥→ and
-  ;; ⌥⌫ move and delete by word, as on the Mac: Linux spells those with
-  ;; Ctrl, and Ctrl+← and Ctrl+→ themselves belong to the window manager,
-  ;; switching workspaces as they switch Spaces.
+  ;; ⌥ stays pressed too, while ⌥←, ⌥→ and ⌥⌫ move and delete by word, as
+  ;; on the Mac: Linux spells those with Ctrl, and Ctrl+← and Ctrl+→
+  ;; themselves belong to the window manager, switching workspaces as they
+  ;; switch Spaces.
   alt (multi lalt (layer-while-held alt))
-  alt-plain (multi lalt (layer-while-held alt-plain))
-
-  ;; One key, within two seconds, then back to normal.
-  wm (one-shot-press 2000 (layer-while-held wm))
 
   ;; ⌘+letter as Ctrl+letter, with ⌘ released for the duration so the app
   ;; sees Ctrl alone. Shift is left alone, so ⌘⇧Z is still redo. H and M are
@@ -112,12 +107,6 @@
   a-7 (unmod (lmet rmet) lalt 7)
   a-8 (unmod (lmet rmet) lalt 8)
   a-9 (unmod (lmet rmet) lalt 9)
-
-  ;; Hyper+direction, which the window manager binds.
-  w-h (multi lctl lalt lmet lsft h)
-  w-j (multi lctl lalt lmet lsft j)
-  w-k (multi lctl lalt lmet lsft k)
-  w-l (multi lctl lalt lmet lsft l)
 )
 
 (deflayer plain
@@ -125,7 +114,7 @@
   @tab   _      _      _      _      _      _      _      _      _      _
   @caps  _      _      _      _      _      _      _      _      _
   _      _      _      _      _      _      _
-  @alt-plain lmet   _      rmet   @hyper @rctl
+  _      lmet   _      rmet   @hyper @rctl
   _      _      _
 )
 
@@ -161,24 +150,6 @@
   _      _      _      _      _      _      _      _      _      _      _
   _      _      _      _      _      _      _      _      _      _
   _      _      _      _      _      _      _
-  _      _      @wm    _      _      _
-  @word-bs @word-left @word-right
-)
-
-(deflayer alt-plain
-  _      _      _      _      _      _      _      _      _
-  _      _      _      _      _      _      _      _      _      _      _
-  _      _      _      _      _      _      _      _      _      _
-  _      _      _      _      _      _      _
-  _      _      @wm    _      _      _
-  _      _      _
-)
-
-(deflayer wm
-  _      _      _      _      _      _      _      _      _
-  _      _      _      _      _      _      _      _      _      _      _
-  _      _      _      _      _      _      @w-h   @w-j   @w-k   @w-l
-  _      _      _      _      _      _      _
   _      _      _      _      _      _
-  _      _      _
+  @word-bs @word-left @word-right
 )
