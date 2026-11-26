@@ -1,26 +1,30 @@
-{ ... }:
+{ pkgs, lib, ... }:
 
-# Plex Media Server, native rather than in Docker.
+# Plex Media Server native NixOS module. Migrated from a bare-metal
+# install on QNAP. Media stays on the NAS (mounted at /mnt/nas/media,
+# declared in hosts/irulan/default.nix); library DB + transcode cache
+# live on the local SSD at services.plex.dataDir.
 #
-# This runs beside the QPKG install on Leia, not instead of it: a separate,
-# freshly claimed server reading the same media over NFS
-# (hosts/irulan/default.nix mounts it read-only at /mnt/nas/media). The library
-# database and transcode cache stay on the local SSD under dataDir. Whether
-# Irulan later takes over Leia's library, watch state included, is a decision
-# for the Plex phase of documentation/IRULAN-MIGRATION.md.
+# Migration: stop Plex on QNAP, rsync /share/Docker/Containers/plex/config
+# (or wherever the QNAP install's "Plex Media Server" support dir is)
+# to /var/lib/plex/Library/Application Support/Plex Media Server/. Start
+# plex.service on Irulan; library is fully populated with watch state,
+# collections, metadata.
 #
-# Hardware transcoding needs Plex Pass, the "Use hardware acceleration when
-# available" setting, and access to /dev/dri. The module's default
-# accelerationDevices already lets the unit see every device; the groups below
-# grant the permission on the render node itself.
+# Hardware transcoding via Intel Quick Sync requires:
+#  - hardware.graphics.enable + intel-media-driver (set in hosts/irulan/)
+#  - plex user in video + render groups (NixOS module does this when
+#    `services.plex.openFirewall = true` and the user is created)
+#  - Plex Pass (the "Use hardware acceleration when available" toggle
+#    in Plex Settings → Transcoder is per-user and lives in the DB,
+#    so it survives the rsync)
 
 {
   services.plex = {
     enable = true;
-    # 32400 for clients, plus the GDM discovery ports that let apps on the LAN
-    # find the server without going through plex.tv.
     openFirewall = true;
+    # dataDir defaults to /var/lib/plex. The migration target is this path.
+    # dataDir = "/var/lib/plex";
+    # user / group default to "plex". The NixOS module creates the user.
   };
-
-  users.users.plex.extraGroups = [ "render" "video" ];
 }

@@ -1,10 +1,4 @@
-{
-  config,
-  lib,
-  pkgs,
-  hostname,
-  ...
-}:
+{ config, lib, pkgs, hostname, ... }:
 
 let
   # State the activation gate below keeps between switches. Root-owned: the
@@ -29,17 +23,10 @@ let
   # version bump inside a jrolfs/tap cask .rb (see tap.nix), an upstream
   # release that `onActivation.upgrade` would otherwise pick up, or Homebrew
   # state edited by hand.
-  bundleStateHash = builtins.hashString "sha256" (
-    builtins.toJSON {
-      inherit (config.homebrew) brewfile;
-      inherit (config.homebrew.onActivation)
-        autoUpdate
-        cleanup
-        upgrade
-        extraFlags
-        ;
-    }
-  );
+  bundleStateHash = builtins.hashString "sha256" (builtins.toJSON {
+    inherit (config.homebrew) brewfile;
+    inherit (config.homebrew.onActivation) autoUpdate cleanup upgrade extraFlags;
+  });
 
   # The control surface for the gate. A script rather than an env var because
   # nix-darwin's activation script runs under `#!/usr/bin/env -i`, so nothing
@@ -110,30 +97,28 @@ in
   # it, because the whole point is to decide whether its `brew bundle` runs.
   # The command itself is reused verbatim, so every onActivation option still
   # means what it means upstream.
-  system.activationScripts.homebrew.text = lib.mkIf config.homebrew.enable (
-    lib.mkForce # bash
-      ''
-        if [ -e ${skipToken} ]; then
-          # Consumed here rather than by the wrapper that wrote it, so that a switch
-          # interrupted before activation can't leave Homebrew gated off silently.
-          rm -f ${skipToken}
-          echo >&2 "Homebrew bundle... skipped (--no-brew)"
-        elif [ ! -f "${config.homebrew.prefix}/bin/brew" ]; then
-          echo >&2 -e "\e[1;31merror: Homebrew is not installed, skipping...\e[0m"
-        elif [ "$(cat ${stamp} 2>/dev/null || true)" = "${bundleStateHash}" ]; then
-          echo >&2 "Homebrew bundle... unchanged, skipped (nix-switch --brew to run anyway)"
-        else
-          echo >&2 "Homebrew bundle..."
-          # Cleared before the run and written only after it returns. The script
-          # runs under `set -e`, so a failed bundle aborts activation with no stamp
-          # on disk and the next switch retries instead of recording it as done.
-          rm -f ${stamp}
-          ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}
-          mkdir -p ${stateDirectory}
-          printf '%s\n' ${bundleStateHash} > ${stamp}
-        fi
-      ''
-  );
+  system.activationScripts.homebrew.text = lib.mkIf config.homebrew.enable (lib.mkForce # bash
+    ''
+      if [ -e ${skipToken} ]; then
+        # Consumed here rather than by the wrapper that wrote it, so that a switch
+        # interrupted before activation can't leave Homebrew gated off silently.
+        rm -f ${skipToken}
+        echo >&2 "Homebrew bundle... skipped (--no-brew)"
+      elif [ ! -f "${config.homebrew.prefix}/bin/brew" ]; then
+        echo >&2 -e "\e[1;31merror: Homebrew is not installed, skipping...\e[0m"
+      elif [ "$(cat ${stamp} 2>/dev/null || true)" = "${bundleStateHash}" ]; then
+        echo >&2 "Homebrew bundle... unchanged, skipped (nix-switch --brew to run anyway)"
+      else
+        echo >&2 "Homebrew bundle..."
+        # Cleared before the run and written only after it returns. The script
+        # runs under `set -e`, so a failed bundle aborts activation with no stamp
+        # on disk and the next switch retries instead of recording it as done.
+        rm -f ${stamp}
+        ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}
+        mkdir -p ${stateDirectory}
+        printf '%s\n' ${bundleStateHash} > ${stamp}
+      fi
+    '');
 
   homebrew.global.brewfile = true;
 
@@ -179,14 +164,8 @@ in
     # pinentry-curses. It had also become un-tappable, since its formula
     # declares no URL for the Linux platforms newer Homebrew validates at tap
     # time, so `brew tap` rejected the whole tap and failed the switch.
-    {
-      name = "jrolfs/tap";
-      trusted = true;
-    }
-    {
-      name = "sozercan/repo";
-      trusted = true;
-    }
+    { name = "jrolfs/tap"; trusted = true; }
+    { name = "sozercan/repo"; trusted = true; }
 
     {
       # Private, so the clone needs a credential. It comes over HTTPS from
@@ -204,106 +183,84 @@ in
   homebrew.brews = [
     "openssl"
 
-    {
-      name = "meterup/packages/mcurl";
-      args = [ "HEAD" ];
-    }
-    {
-      name = "meterup/packages/mctl";
-      args = [ "HEAD" ];
-    }
-    {
-      name = "meterup/packages/hostsfile";
-      args = [ "HEAD" ];
-    }
+    { name = "meterup/packages/mcurl"; args = [ "HEAD" ]; }
+    { name = "meterup/packages/mctl"; args = [ "HEAD" ]; }
+    { name = "meterup/packages/hostsfile"; args = [ "HEAD" ]; }
   ];
 
-  # An entry is either a token or a nix-darwin cask submodule, so the exclusion
-  # check reads the name out rather than comparing the entry itself:
-  # excluded-apps.nix lists tokens, and an attrset would never match one.
-  homebrew.casks =
-    let
-      caskToken = app: if builtins.isString app then app else app.name;
-    in
-    builtins.filter (app: !lib.elem (caskToken app) excludeApps) [
+  homebrew.casks = builtins.filter (app: !lib.elem app excludeApps) [
 
-      # greedy because the cask declares auto_updates, which `brew bundle`
-      # otherwise reads as "the app updates itself, leave it alone". Leaving it
-      # alone hands the version back to 1Password's own updater, and Kandji
-      # gates on the installed version, so brew has to be the thing that moves
-      # it, in lockstep with 1password-cli below. The two speak a private
-      # protocol that changes most releases, and the CLI's desktop-app
-      # integration breaks whenever they drift apart.
-      {
-        name = "1password";
-        greedy = true;
-      }
+    "1password"
+    "1password-cli"
+    "acorn"
+    "arq"
+    "aws-vpn-client"
+    "chatgpt"
+    "claude"
+    "cleanshot"
+    "cursor"
+    "daisydisk"
+    "discord"
+    "fantastical"
+    "figma"
+    "firefox"
+    "firefox@developer-edition"
+    "firefox@nightly"
+    "glide-browser"
+    "google-chrome"
+    "google-chrome@beta"
+    "google-chrome@canary"
+    "grammarly-desktop"
+    "hammerspoon"
+    "jrolfs/tap/lingon-pro"
+    "jrolfs/tap/unite-pro"
+    "karabiner-elements"
+    "kitty"
+    "linear"
+    "loom"
+    "moom"
+    "obsidian"
+    "orbstack"
+    "plex"
+    "plexamp"
+    "proxyman"
+    "raycast"
+    "resilio-sync"
+    "safari-technology-preview"
+    "signal"
+    "slack"
+    "spotify"
+    "stay"
+    "superhuman"
+    "tailscale-app"
+    "telegram"
+    "whatsapp"
+    "yaak"
+    "zed"
+    "zed@preview"
+    "zoom"
+    # back. Deleting that module restores the stock cask everywhere.
+    # from source (patched for native picture in picture) or to add this cask
+    # kaset is not listed here: kaset.nix decides per host whether to build it
 
-      "1password-cli"
-      "acorn"
-      "arq"
-      "aws-vpn-client"
-      "chatgpt"
-      "claude"
-      "cleanshot"
-      "cursor"
-      "daisydisk"
-      "dash"
-      "discord"
-      "fantastical"
-      "figma"
-      "firefox"
-      "firefox@developer-edition"
-      "firefox@nightly"
-      "glide-browser"
-      "google-chrome"
-      "google-chrome@beta"
-      "google-chrome@canary"
-      "grammarly-desktop"
-      "hammerspoon"
-      "home-assistant"
-      "jrolfs/tap/lingon-pro"
-      "jrolfs/tap/unite-pro"
-      "karabiner-elements"
-      "kitty"
-      "linear"
-      "loom"
-      "moom"
-      "obsidian"
-      "orbstack"
-      "plex"
-      "plexamp"
-      "proxyman"
-      "raycast"
-      "resilio-sync"
-      "safari-technology-preview"
-      "signal"
-      "slack"
-      "spotify"
-      "stay"
-      "superhuman"
-      "tailscale-app"
-      "telegram"
-      "whatsapp"
-      "yaak"
-      "zed"
-      "zed@preview"
-      "zoom"
-
-      # Fonts
-      "font-atkinson-hyperlegible"
-      "font-fira-code-nerd-font"
-      "font-geist"
-      "font-hack-nerd-font"
-      "font-ibm-plex-mono"
-      "font-ibm-plex-sans"
-      "font-ibm-plex-serif"
-      "font-inter"
-      "font-iosevka"
-      "font-iosevka-slab"
-      "font-jetbrains-mono"
-      "font-jetbrains-mono-nerd-font"
-      "font-public-sans"
-      "font-sf-pro"
-    ];
+    # Fonts
+    "font-atkinson-hyperlegible"
+    "font-fira-code-nerd-font"
+    "font-geist"
+    "font-hack-nerd-font"
+    # Upstream split the single `font-ibm-plex` cask into one per family.
+    # These are the Latin three; the rest (math, condensed, and the
+    # arabic/devanagari/hebrew/jp/kr/sc/tc/thai scripts) exist under the same
+    # prefix if ever wanted. Nothing in this config names IBM Plex, so this is
+    # availability rather than a dependency.
+    "font-ibm-plex-mono"
+    "font-ibm-plex-sans"
+    "font-ibm-plex-serif"
+    "font-inter"
+    "font-iosevka"
+    "font-iosevka-slab"
+    "font-jetbrains-mono"
+    "font-jetbrains-mono-nerd-font"
+    "font-public-sans"
+  ];
 }

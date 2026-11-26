@@ -5,8 +5,9 @@ self: super:
 let
   # Pin packages whose current-revision build isn't in the binary cache yet.
   # `pin` prints the live cache status on each rebuild (see pin.nix) so we know
-  # when a pin is safe to remove. The mise pin was dropped 2026-08-12 once
-  # cache.nixos.org caught up (the helper reported it safe to remove).
+  # when a pin is safe to remove. Currently no active pins — the mise pin was
+  # dropped 2026-08-12 once cache.nixos.org caught up (the helper reported it
+  # safe to remove). Kept imported for the next time a build lags the cache.
   pin = import ./pin.nix super;
 
   # Install packages from the `nixpkgs/master` branch via `masterPkgs`,
@@ -26,26 +27,6 @@ in
 {
   spicetify-cli = masterPkgs.spicetify-cli;
 
-  # The 8.12 desktop app ships chrome_crashpad_handler, which the 2026-10-24
-  # nixpkgs package leaves with a generic Linux interpreter, so NixOS refuses
-  # to run it, Chromium trips a check, and every launch dies with SIGTRAP
-  # before a window appears. nixpkgs master patches the whole bundle with
-  # autoPatchelfHook instead. Drop this once nixpkgs' _1password-gui/linux.nix
-  # uses autoPatchelfHook too. Linux only: the Macs run the Homebrew app.
-  _1password-gui =
-    if super.stdenv.hostPlatform.isLinux then masterPkgs._1password-gui else super._1password-gui;
-
-  # azure-cli depends on fabric, which nixpkgs marks broken against invoke 3
-  # (nixpkgs moved to invoke 3.0.3 by 2026-10-24). allowBroken turns that into
-  # a failed build rather than an evaluation error. The previous lock's
-  # nixpkgs built it, and the warning below says when current nixpkgs has a
-  # cached azure-cli again.
-  azure-cli = pin {
-    name = "azure-cli";
-    rev = "d54020a6ac3211e9f4201631bdf67678818c0cdf";
-    sha256 = "0znah7yvspa2dvaf0nb8dgm3lw7qd3n962a8zlqd47j5z55p5m2a";
-  };
-
   # mcp-nixos runs its pytest suite at build time. `test_read_text_file`
   # picks an arbitrary small text file out of the live /nix/store, reads it,
   # and asserts the output contains no "Error" — but plenty of store files
@@ -53,17 +34,7 @@ in
   # JS: SyntaxError, etc.), so the test fails non-deterministically depending
   # on which store path it happens to land on. The read itself works fine;
   # the assertion is just naive. Drop this once upstream fixes the test.
-  #
-  # Pinned as well: as of the 2026-10-24 nixpkgs, fastmcp 3.4.7 imports
-  # `McpError`, which mcp 2.2.0 renamed to `MCPError`, so mcp-nixos fails its
-  # import check. NixOS/nixpkgs#563493 (fastmcp 4.0.10) should fix it. Unlike
-  # recode below this is a build failure, so a cached current build does mean
-  # it's fixed, and pin's warning is the signal to drop it.
-  mcp-nixos = (pin {
-    name = "mcp-nixos";
-    rev = "d54020a6ac3211e9f4201631bdf67678818c0cdf";
-    sha256 = "0znah7yvspa2dvaf0nb8dgm3lw7qd3n962a8zlqd47j5z55p5m2a";
-  }).overridePythonAttrs (old: {
+  mcp-nixos = super.mcp-nixos.overridePythonAttrs (old: {
     disabledTests = (old.disabledTests or [ ]) ++ [ "test_read_text_file" ];
   });
 
@@ -137,129 +108,13 @@ in
   # license, so it couldn't be upstreamed as-is. The npm package of the same
   # name is only a prebuilt-binary shim; this builds from the Go source pinned
   # by the `claude-sync` flake input (bump with `nix flake update claude-sync`).
-  #
-  # Two patches until upstream catches up. Both are diffs against 1.17.2, so a
-  # bump of the input means regenerating or dropping them.
-  #
-  # pr-77 is tawanorg/claude-sync#77 (sjalife, head 6532402) merged onto main.
-  # Without it, a session transcript appended on two machines is a "conflict"
-  # rather than a fast-forward, history.jsonl is last-writer-wins, and .conflict
-  # copies get uploaded to every other machine. The maintainer has chosen to
-  # land it first (#91) but hadn't reviewed it as of 2026-10-24.
-  #
-  # conflict-copy-loop is ours. A pull that parks the remote copy as .conflict
-  # leaves the original's state as it was, so every following pull parks
-  # another identical copy: 791 of them from 29 files on ala in October. #77
-  # fixes that for transcripts only. The patch stops it for every file by
-  # recording identical content as resolved and skipping a copy the newest one
-  # already holds.
   claude-sync = super.buildGoModule {
     pname = "claude-sync";
-    version = "1.17.2";
+    version = "0.4.0";
     src = inputs.claude-sync;
-    patches = [
-      ./claude-sync/pr-77-multi-machine-sync.patch
-      ./claude-sync/conflict-copy-loop.patch
-    ];
     vendorHash = "sha256-VLqVk5bhM+WoEbP+agFpm1LjzI2qFWlWQZB8yV2vbOU=";
     subPackages = [ "cmd/claude-sync" ];
     meta.mainProgram = "claude-sync";
-  };
-
-  # opencode's auto-mode plugin (github:mortezaPRK/opencode-auto-mode),
-  # patched and loaded as a local directory rather than from npm. 1.0.0 sends
-  # almost every action to a prompt (mortezaPRK/opencode-auto-mode#26): its
-  # shell guard asks for any `&&`, `|`, `2>&1` or `~` before a reviewer sees
-  # the command, and it skips review whenever a user message has attachments,
-  # which Zed's @-mentions are, or the session outgrows its transcript window.
-  # partial-context-and-shell-review routes both to the model reviewers
-  # instead. The reviewer is told when context is partial, and still asks when
-  # no user message is visible. api-key-file lets a decision stage read its
-  # key from a file rather than the environment of opencode's background
-  # server, which whichever client starts it first would have to carry. The
-  # plugin's tests are updated to match and pass.
-  #
-  # Dependencies follow claude-helpers below: a fixed-output derivation from
-  # the plugin's bun.lock, one hash per system. It writes
-  # $out/node_modules rather than the package tree itself, because bun
-  # resolves real paths, and a dependency finds its siblings by walking up to
-  # a directory named node_modules.
-  opencode-auto-mode =
-    let
-      version = "1.0.0";
-
-      src = super.applyPatches {
-        name = "opencode-auto-mode-${version}-source";
-        src = super.fetchFromGitHub {
-          owner = "mortezaPRK";
-          repo = "opencode-auto-mode";
-          rev = "v${version}";
-          hash = "sha256-t3NIlOh/srN8KEqcNXgF0OWaEpi54lWT/A05beM7cy0=";
-        };
-        patches = [
-          ./opencode-auto-mode/partial-context-and-shell-review.patch
-          ./opencode-auto-mode/api-key-file.patch
-        ];
-      };
-
-      manifest = super.runCommandLocal "opencode-auto-mode-manifest" { } ''
-        install -d $out
-        install -m644 ${src}/package.json ${src}/bun.lock $out/
-      '';
-
-      modules = super.stdenvNoCC.mkDerivation {
-        name = "opencode-auto-mode-node-modules-${version}";
-        src = manifest;
-        nativeBuildInputs = [ super.bun ];
-        dontFixup = true;
-        buildPhase = ''
-          export HOME=$TMPDIR
-          export BUN_INSTALL_CACHE_DIR=$TMPDIR/cache
-          bun install --frozen-lockfile --production --ignore-scripts --no-progress
-        '';
-        installPhase = ''
-          install -d $out
-          cp -R node_modules $out/node_modules
-        '';
-        outputHashMode = "recursive";
-        outputHashAlgo = "sha256";
-        outputHash =
-          let
-            hashes = {
-              aarch64-darwin =
-                "sha256-AYAOoiL7G/KNEwJPKDYMo3mvIX4hsBO6E7PoI9stHzI=";
-              x86_64-linux =
-                "sha256-TR4DSP4PVQrOyWLCAl6I8+2Ad5F9PLJ26hn3GQqJH84=";
-            };
-            inherit (super.stdenv.hostPlatform) system;
-          in
-          hashes.${system} or (throw
-            ("opencode-auto-mode has no node_modules hash for ${system}; "
-              + "build it there and record the hash nix reports"));
-      };
-    in
-    super.runCommandLocal "opencode-auto-mode-${version}" { } ''
-      cp -R ${src} $out
-      chmod u+w $out
-      ln -s ${modules}/node_modules $out/node_modules
-    '';
-
-  # A Telegram client for opencode (github:grinev/opencode-telegram-bot),
-  # run on Irulan against the agent VM's server
-  # (modules/nixos/services/agent-vm.nix). Not in nixpkgs. Built from its
-  # tagged source rather than run through `npx …@latest`, so the version only
-  # moves with this file.
-  opencode-telegram-bot = super.buildNpmPackage rec {
-    pname = "opencode-telegram-bot";
-    version = "0.26.5";
-    src = super.fetchFromGitHub {
-      owner = "grinev";
-      repo = "opencode-telegram-bot";
-      rev = "v${version}";
-      hash = "sha256-Mjku5+XNECO0kQNX2zls18IAlf8kJElaFwTTHfo9xuU=";
-    };
-    npmDepsHash = "sha256-eDXmrs3c8uktWq/rZAVdtemoq/5Fo/fn6G02B4sM9nE=";
-    meta.mainProgram = "opencode-telegram";
   };
 
   # The Claude Code helper scripts kept in dotfiles/home/.claude/bin, built into
@@ -283,15 +138,10 @@ in
       '';
 
       # Dependencies as a fixed-output derivation, the one place in this build
-      # allowed to reach the network. Regenerate after changing bun.lock:
-      # `bun install` in the source directory, then take the hash nix reports
-      # when it rebuilds.
-      #
-      # One hash per system, not one hash. What bun writes into node_modules
-      # differs by host even from an identical lockfile, so a darwin-only hash
-      # failed the first NixOS build with a mismatch. A system missing from
-      # this set is better as a readable error than as a mismatch three
-      # derivations deep, which is how this one surfaced.
+      # allowed to reach the network. bun.lock pins what lands here, so the hash
+      # changes when the lockfile does and at no other time. Regenerate both
+      # together: `bun install` in the source directory, then take the hash nix
+      # reports when it rebuilds.
       modules = super.stdenvNoCC.mkDerivation {
         name = "claude-helpers-node-modules";
         src = manifest;
@@ -305,19 +155,7 @@ in
         installPhase = "cp -R node_modules $out";
         outputHashMode = "recursive";
         outputHashAlgo = "sha256";
-        outputHash =
-          let
-            hashes = {
-              aarch64-darwin =
-                "sha256-JkS6JWjXOf9coNB61yD+JvPWOwAxooBCAYSanpIL00g=";
-              x86_64-linux =
-                "sha256-sipNQconaJ2WCSRlsAOwp4AGJLHe4AnI+gPGoZdOXLA=";
-            };
-            inherit (super.stdenv.hostPlatform) system;
-          in
-          hashes.${system} or (throw
-            ("claude-helpers has no node_modules hash for ${system}; "
-              + "build it there and record the hash nix reports"));
+        outputHash = "sha256-JkS6JWjXOf9coNB61yD+JvPWOwAxooBCAYSanpIL00g=";
       };
     in
     super.runCommandLocal "claude-helpers"
@@ -397,77 +235,6 @@ in
       mainProgram = "mysides";
     };
   };
-
-  # Build one of this repo's own single-file Rust tools.
-  #
-  # The tools it builds are a few hundred lines of POSIX calls each (xattrs,
-  # resource forks, FinderInfo), with no dependency beyond libc, so they are
-  # compiled by a bare `rustc` rather than through Cargo. That skips a
-  # Cargo.toml, a lock file and a vendored dependency tree per tool, and keeps
-  # the derivation the same shape the `$CC` one-liners had. The cost is the
-  # rustc closure, which is deliberate: every tool goes through here so they
-  # cannot drift onto different compilers.
-  #
-  # Three of the flags are load-bearing under nix and none of them are
-  # obvious, which is the other reason this is centralised:
-  #
-  #   --edition             bare rustc defaults to the 2015 edition, because
-  #                         there is no Cargo.toml for it to read one from
-  #   --crate-name          rustc otherwise derives the crate name from the
-  #                         source *file name*, which here is a store path, so
-  #                         the store hash lands in every mangled symbol
-  #   --remap-path-prefix   panic locations embed file!(), which is that same
-  #                         store path
-  #
-  # Without the last two, nix finds the hash while scanning the binary and
-  # records the .rs source as a runtime dependency of the tool. Each flag alone
-  # still leaves one copy behind (symbols vs. panic strings), so both are
-  # needed to keep the closure to a single path.
-  # A library crate for the tools above to share, built the same bare way. An
-  # rlib needs no Cargo either: `--crate-type=rlib` here, `--extern` there.
-  rustLibrary = { name, src, edition ? "2021" }:
-    let crateName = builtins.replaceStrings [ "-" ] [ "_" ] name;
-    in
-    super.stdenv.mkDerivation {
-      inherit name;
-      dontUnpack = true;
-      nativeBuildInputs = [ super.rustc ];
-      passthru = { inherit crateName; };
-      # An rlib is an ar archive carrying a .rmeta member, and the default
-      # fixup phase strips it right back out, leaving a file that only fails
-      # at the point something tries to link against it.
-      dontStrip = true;
-      installPhase = ''
-        mkdir -p $out/lib
-        rustc --edition ${edition} -O --crate-type=rlib \
-          --crate-name ${crateName} \
-          --remap-path-prefix ${src}=${name}.rs \
-          -o $out/lib/lib${crateName}.rlib ${src}
-      '';
-    };
-
-  # `program` defaults to `name` and exists for the one tool whose binary has
-  # to be called something other than its derivation: the icon-customizer
-  # wrapper installs as `icon-customizer`, which is already the name of the
-  # shell script it runs.
-  rustTool = { name, src, program ? name, edition ? "2021", flags ? [ ], libraries ? [ ] }:
-    super.stdenv.mkDerivation {
-      inherit name;
-      dontUnpack = true;
-      nativeBuildInputs = [ super.rustc ];
-      installPhase = ''
-        mkdir -p $out/bin
-        rustc --edition ${edition} -O \
-          --crate-name ${builtins.replaceStrings [ "-" ] [ "_" ] name} \
-          --remap-path-prefix ${src}=${name}.rs \
-          ${super.lib.concatMapStringsSep " "
-            (library: "--extern ${library.crateName}=${library}/lib/lib${library.crateName}.rlib")
-            libraries} \
-          ${super.lib.escapeShellArgs flags} \
-          -o $out/bin/${program} ${src}
-      '';
-      meta.mainProgram = program;
-    };
 
   darwin-zsh-completions = super.runCommandNoCC "darwin-zsh-completions-0.0.0"
     { preferLocalBuild = true; }

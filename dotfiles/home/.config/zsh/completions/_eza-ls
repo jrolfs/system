@@ -1,7 +1,0 @@
-#compdef eza-ls
-
-# Every ls flag either maps to eza or runs the system ls, so ls's own completion
-# is the accurate one. _ls asks `eza-ls --version` which variant it's dealing
-# with, and that long option goes to the system ls, so GNU and BSD each get
-# their own flags.
-_ls "$@"

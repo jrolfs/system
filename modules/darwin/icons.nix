@@ -1,11 +1,11 @@
-{ config, pkgs, userName, ... }:
+{ config, lib, pkgs, userName, ... }:
 let
   # Hardcoded because builtins.getEnv returns "" under pure flake eval.
   #
   # The asset tree is read out of the deployed configuration rather than
   # ~/.local/share/icons, which is where homeshick used to put it — and only
   # ever as a symlink chain that ended in this same repo. Nothing else refers to
-  # that path (the `icn` alias in modules/home/darwin/default.nix already points here),
+  # that path (the `icn` alias in modules/home/darwin.nix already points here),
   # and depending on it meant depending on a link that no longer gets created,
   # so fd had no search path and every run was a no-op.
   #
@@ -18,25 +18,21 @@ let
   configDirectory = "/Users/${userName}/.config/system";
   assetsDir = "${configDirectory}/icons/assets";
 
-  # The xattr, FinderInfo and Icon\r plumbing that icon-setter shares with
-  # folder-icons.nix. See pkgs/custom-icon.rs for why it is shared.
-  customIcon = pkgs.rustLibrary {
-    name = "custom-icon";
-    src = ./pkgs/custom-icon.rs;
-  };
-
-  # A small tool that sets custom icons on macOS app bundles via direct POSIX
-  # file I/O, writing the Icon\r resource fork and FinderInfo xattr by hand and
-  # completely bypassing NSWorkspace / osascript. This sidesteps the TCC and
-  # com.apple.macl restrictions that block the NSWorkspace API when run from a
-  # LaunchDaemon.
+  # A small C tool that sets custom icons on macOS app bundles via direct
+  # POSIX file I/O — writing the Icon\r resource fork and FinderInfo xattr
+  # by hand, completely bypassing NSWorkspace / osascript.  This sidesteps
+  # TCC and com.apple.macl restrictions that block the NSWorkspace API when
+  # run from a LaunchDaemon.
   #
   # Accepts both .icns and .png input; PNGs are wrapped in an icns container
-  # on the fly (single ic10 entry, which macOS downscales as needed).
-  iconSetter = pkgs.rustTool {
+  # on the fly (single ic10 entry — macOS downscales as needed).
+  iconSetter = pkgs.stdenv.mkDerivation {
     name = "icon-setter";
-    src = ./pkgs/icon-setter.rs;
-    libraries = [ customIcon ];
+    dontUnpack = true;
+    installPhase = ''
+      mkdir -p $out/bin
+      $CC -O2 -Wall -o $out/bin/icon-setter ${./pkgs/icon-setter.c}
+    '';
   };
 
   script = pkgs.writeShellScriptBin "icon-customizer" ''
@@ -73,18 +69,12 @@ let
           run=("$setter")
         fi
 
-        "''${run[@]}" "$app" "$icon" 2>&1
-        case $? in
-          0)
-            echo "[$ts] ok: $name"
-            echo "$name" >> "'"$results"'"
-            ;;
-          # A SIP-protected bundle can never take a custom icon, so it is not a
-          # failure to chase: the apps Apple ships are symlinks into the
-          # cryptex. No apostrophes in here, the whole block is single-quoted.
-          3) echo "[$ts] skipped: $name (SIP-protected)" ;;
-          *) echo "[$ts] FAILED: $name" ;;
-        esac
+        if "''${run[@]}" "$app" "$icon" 2>&1; then
+          echo "[$ts] ok: $name"
+          echo "$name" >> "'"$results"'"
+        else
+          echo "[$ts] FAILED: $name"
+        fi
       ' zsh {}
 
     count=$(wc -l < "$results" 2>/dev/null | tr -d ' ')
@@ -99,16 +89,37 @@ let
     echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] run finished"
   '';
 
+  # A stable-path compiled wrapper so the agent can be granted Full Disk
+  # Access once and the grant survives nix rebuilds (which change store
+  # paths).  Must be a real Mach-O binary — TCC ignores FDA grants on
+  # shell scripts (it evaluates /bin/bash instead of the script path).
+  wrapper = pkgs.stdenv.mkDerivation {
+    name = "icon-customizer-wrapper";
+    dontUnpack = true;
+    installPhase = ''
+      mkdir -p $out/bin
+      $CC -O2 -Wall -o $out/bin/icon-customizer ${./pkgs/icon-customizer-wrapper.c}
+    '';
+  };
+  wrapperPath = "/usr/local/bin/icon-customizer";
   logPath = "${configDirectory}/icons/launchd.log";
 in
 {
   environment.systemPackages = [ script ];
 
-  # Writing inside a MACL'd app bundle needs Full Disk Access, which cannot be
-  # granted to this script directly: TCC would evaluate /bin/bash, and the store
-  # path moves every rebuild anyway. fda.nix owns the one binary that holds the
-  # grant, and this reaches the access through it.
-  fda.operations.icons = script;
+
+  system.activationScripts.postActivation.text = lib.mkAfter # bash
+    ''
+      # Install a stable-path compiled wrapper for icon-customizer.
+      # Must be a Mach-O binary (not a script) so TCC recognises the FDA
+      # grant on the path.  The agent's ProgramArguments points here so the
+      # user only has to grant Full Disk Access once (System Settings →
+      # Privacy & Security → Full Disk Access → add
+      # /usr/local/bin/icon-customizer).
+      mkdir -p /usr/local/bin
+      cp ${wrapper}/bin/icon-customizer ${wrapperPath}
+      chmod +x ${wrapperPath}
+    '';
 
   # Passwordless sudo for icon-setter so the LaunchAgent can customise icons on
   # root-owned app bundles (e.g. Kandji-managed apps).  Managed declaratively
@@ -128,7 +139,7 @@ in
   # needed — FDA alone is sufficient to write inside MACL'd bundles.
   launchd.user.agents.icon-customizer = {
     serviceConfig = {
-      ProgramArguments = [ config.fda.runPath "icons" ];
+      ProgramArguments = [ wrapperPath ];
       EnvironmentVariables.ICON_CUSTOMIZER_NOTIFY = "0";
       WatchPaths = [
         "/Applications"

@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The dotfile tree for the nix flake that deploys to `~/.config/system`. Files under `home/` mirror `$HOME`, and **home-manager** links them there from declarations in `modules/home/` at the repo root.
 
-This tree was the `dot` and `macos` homeshick castles before the flake migration, subtree-merged with their history. `private` is the only remaining castle: git-crypt, cloned by bootstrap, still reached through `$HOMESHICK_KINGDOM`. [MIGRATION.md](../documentation/MIGRATION.md) at the repo root is the source of truth for the migration and its gotchas.
+This tree was the `dot` and `macos` homeshick castles before the flake migration, subtree-merged with their history. `private` is the only remaining castle: git-crypt, cloned by bootstrap, still reached through `$HOMESHICK_KINGDOM`. [MIGRATION.md](../MIGRATION.md) at the repo root is the source of truth for the migration and its gotchas.
 
 ## Before editing files here
 
 **A tracked file is not a linked file.** homeshick linked whatever sat in the castle. Here every path needs a declaration in `modules/home/`, and a tracked file nobody declared is simply absent on the machine, which reads as a broken feature rather than a missing symlink. Adding a file under `home/` is only half the change.
 
-**Not every path in `$HOME` has a file here.** Some are generated from nix options, so there is nothing in this tree to edit: `nix-switch`, `nix-rebuild` and `nix-update` come from `modules/home/shared/nix-commands.nix` (written to `~/.config/zsh/init/nix.zsh`, with completion), `.zshrc.darwin` (`icn`, `mkbk`) from `modules/home/darwin/default.nix`, atuin from `modules/home/shared/atuin.nix`, and direnv from `programs.direnv`. Most other tools are still lift-and-shift files in this tree.
+**Not every path in `$HOME` has a file here.** Some are generated from nix options, so there is nothing in this tree to edit: `.zshrc.darwin` (the `nix-switch`, `nix-rebuild`, `icn`, and `mkbk` aliases) comes from `modules/home/darwin.nix`, atuin from `modules/home/atuin.nix`, and direnv from `programs.direnv`. Most other tools are still lift-and-shift files in this tree.
 
 **Whether an edit takes effect on save depends on the path.** Most files are copied into the nix store and need a rebuild. Others are `mkOutOfStoreSymlink`ed back to this tree and are live on save. Check rather than assume:
 
@@ -38,7 +38,7 @@ There are no git submodules. The themes and plugins that used to be submodules a
 
 **Git:** config at `home/.config/git/config`, linked as-is rather than generated from `programs.git`. Uses delta as pager, GPG signing by default, git-duet for pairing.
 
-**Kitty terminal:** `home/.config/kitty/` with separate files for bindings, diff, and grab, plus `sessions/`. `worktree/` moves a tab between git worktrees: worktrunk's `post-switch` hook runs `switch.py`, which swaps the neovim pane onto that worktree's session, cd's the shell pane and retitles the tab, leaving the Claude pane where it is. `ctrl+s>w` is the same thing from a keybinding.
+**Kitty terminal:** `home/.config/kitty/` with separate files for bindings, diff, and grab, plus `sessions/`.
 
 **Glide browser:** TypeScript config at `home/.config/glide/`. Its `.envrc` runs `use flake .#glide` against the root flake, so there is no devbox.json. The directory is linked out-of-store so the browser can write back into this tree, which is how `:toolbar_export` in `toolbar.ts` records the toolbar layout.
 

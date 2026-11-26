@@ -35,13 +35,6 @@ autohide.start({
   "kitty",
 })
 
--- Relaunching an application leaves its new windows off All Desktops while the
--- Dock still shows it assigned there, and the assignment can only be re-applied
--- through the menu. See modules/dock-spaces.lua.
-require('modules.dock-spaces').start({
-  "kitty",
-})
-
 require('modules.touchid-focus').start()
 
 local zed = require('modules.zed')
