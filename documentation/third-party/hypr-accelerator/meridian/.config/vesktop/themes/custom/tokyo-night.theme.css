@@ -1,0 +1,54 @@
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+
+/* midnight-tokyonight-night.css — override colors for folke/tokyonight “night” */
+:root{
+  /* text */
+  --text-1:#c0caf5;
+  --text-2:#c0caf5;
+  --text-3:#a9b1d6;  /* body */
+  --text-4:#565f89;  /* icons/secondary */
+  --text-5:#3b4261;  /* muted */
+
+  /* backgrounds */
+  --bg-4:#1a1b26;   /* main */
+  --bg-3:#24283b;   /* surfaces */
+  --bg-2:#292e42;   /* controls */
+  --bg-1:#414868;   /* pressed */
+  --hover: color-mix(in hsl, #c0caf5, transparent 92%);
+  --active: color-mix(in hsl, #c0caf5, transparent 82%);
+  --active-2: color-mix(in hsl, #c0caf5, transparent 72%);
+  --message-hover: color-mix(in hsl, #000, transparent 88%);
+
+  /* accents (Tokyo Night blue) */
+  --accent-1:#7aa2f7; /* links */
+  --accent-2:#7aa2f7; /* brand */
+  --accent-3:#7aa2f7; /* filled button */
+  --accent-4:#5b7bd3; /* hover (darker) */
+  --accent-5:#3f5aa7; /* active (darker) */
+  --accent-new: var(--accent-2);
+  --mention: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 90%) 40%, transparent);
+  --mention-hover: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 95%) 40%, transparent);
+  --reply: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 90%) 40%, transparent);
+  --reply-hover: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 95%) 40%, transparent);
+
+  /* status */
+  --online:#9ece6a;
+  --idle:#e0af68;
+  --dnd:#f7768e;
+  --streaming:#bb9af7;
+  --offline:var(--text-4);
+
+  /* borders */
+  --border-light: rgba(192,202,245,0.12);
+  --border: rgba(192,202,245,0.24);
+  --border-hover: rgba(192,202,245,0.32);
+  --button-border: rgba(255,255,255,0.09);
+
+  /* base semantic */
+  --red-1:#f7768e; --red-2:#f7768e; --red-3:#db4b4b; --red-4:#b43636; --red-5:#8f2929;
+  --green-1:#9ece6a; --green-2:#9ece6a; --green-3:#7fb65a; --green-4:#6aa14b; --green-5:#54863d;
+  --blue-1:#7aa2f7; --blue-2:#7aa2f7; --blue-3:#6489e6; --blue-4:#516fc4; --blue-5:#435da6;
+  --yellow-1:#e0af68; --yellow-2:#e0af68; --yellow-3:#d99653; --yellow-4:#c27f45; --yellow-5:#a56839;
+  --purple-1:#bb9af7; --purple-2:#bb9af7; --purple-3:#a487e6; --purple-4:#8b73c4; --purple-5:#705ba0;
+}
+

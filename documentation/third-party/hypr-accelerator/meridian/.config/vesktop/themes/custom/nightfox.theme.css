@@ -1,0 +1,62 @@
+/* Nightfox — Midnight skin (high-contrast tuned) */
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+body { --colors: on; }
+
+:root{
+  /* backgrounds (slightly darker mids for separation) */
+  --bg-4:#192330;   /* main */
+  --bg-3:#233246;   /* ↓ from #29394f to deepen contrast */
+  --bg-2:#2b3b51;   /* controls */
+  --bg-1:#3c5372;   /* pressed */
+
+  /* text (lifted across the board) */
+  --text-1:#e6e7e9; /* brightest */
+  --text-2:#d9dbdd; /* headings */
+  --text-3:#c9ccd0; /* normal body (↑ from #aeafb0) */
+  --text-4:#a2acb8; /* icons/secondary (↑) */
+  --text-5:#808a98; /* muted (↑) */
+
+  /* interaction */
+  --hover:  color-mix(in srgb, var(--text-2) 14%, transparent);
+  --active: color-mix(in srgb, var(--text-2) 24%, transparent);
+  --active-2: color-mix(in srgb, var(--text-2) 34%, transparent);
+  --message-hover: rgba(0,0,0,0.10);
+
+  /* accents (Nightfox blue) */
+  --accent-1:#86abdc;
+  --accent-2:#719cd6; /* brand */
+  --accent-3:#86abdc;
+  --accent-4:#6085b6;
+  --accent-5:#4b6f9a;
+  --accent-new: var(--accent-2);
+  --mention: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 90%) 40%, transparent);
+  --mention-hover: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 95%) 40%, transparent);
+
+  /* status (Nightfox vibe) */
+  --online:#81b29a; --idle:#dbc074; --dnd:#c94f6d; --streaming:#9d79d6; --offline:var(--text-4);
+
+  /* borders (a hair stronger) */
+  --border-light: rgba(205,206,207,0.18);
+  --border:       rgba(205,206,207,0.30);
+  --border-hover: rgba(205,206,207,0.40);
+  --button-border: rgba(255,255,255,0.12);
+
+  /* semantic ramps */
+  --red-1:#d16983; --red-2:#c94f6d; --red-3:#b74661; --red-4:#a03d55; --red-5:#883447;
+  --green-1:#8ebaa4; --green-2:#81b29a; --green-3:#75a48d; --green-4:#648c77; --green-5:#547563;
+  --blue-1:#86abdc; --blue-2:#719cd6; --blue-3:#648cbe; --blue-4:#577ca7; --blue-5:#4a6d91;
+  --yellow-1:#e0c989; --yellow-2:#dbc074; --yellow-3:#c8ad66; --yellow-4:#af9658; --yellow-5:#947d4a;
+  --purple-1:#baa1e2; --purple-2:#9d79d6; --purple-3:#8b6dc0; --purple-4:#775ea8; --purple-5:#634f90;
+}
+
+/* Contrast patch for Nightfox (put after midnight’s own variable block) */
+@container root style(--colors: on) {
+  .visual-refresh .theme-dark, .visual-refresh .theme-light {
+    --channels-default: var(--text-3);
+    --channel-icon: var(--text-3);
+    --header-secondary: var(--text-3);
+    --interactive-normal: var(--text-3);
+    --chat-text-muted: var(--text-5);
+  }
+}
+

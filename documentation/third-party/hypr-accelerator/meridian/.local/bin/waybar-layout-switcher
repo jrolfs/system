@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WAYBAR_DIR="$HOME/.config/waybar"
+LAYOUTS_DIR="$WAYBAR_DIR/layouts"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/waybar"
+STATE_FILE="$STATE_DIR/last_layout"
+NOTIFY=${NOTIFY:-notify-send}
+
+mkdir -p "$STATE_DIR"
+
+if [[ ! -d "$LAYOUTS_DIR" ]]; then
+  echo "No layouts directory at $LAYOUTS_DIR" >&2
+  exit 1
+fi
+
+mapfile -t LAYOUTS < <(find "$LAYOUTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | sort)
+((${#LAYOUTS[@]})) || { echo "No layouts found in $LAYOUTS_DIR"; exit 1; }
+
+# Detect current layout
+current="(none)"
+if [[ -L "$WAYBAR_DIR/config.jsonc" ]]; then
+  tgt=$(readlink -f "$WAYBAR_DIR/config.jsonc" || true)
+  if [[ "$tgt" == "$LAYOUTS_DIR/"*"/config.jsonc" ]]; then
+    current=$(basename "$(dirname "$tgt")")
+  fi
+fi
+
+# Build menu with star on current
+menu=$(printf "%s\n" "${LAYOUTS[@]}" | awk -v c="$current" '{print ($0==c?"| ":"  ")$0}')
+chosen=$(echo "$menu" | rofi -dmenu -i -p "Select Layout" -theme ~/.local/share/rofi/themes/minimal.rasi | sed 's/^| //; s/^  //')
+[[ -z "${chosen:-}" ]] && exit 0
+
+cfg_src="$LAYOUTS_DIR/$chosen/config.jsonc"
+css_src="$LAYOUTS_DIR/$chosen/style.css"
+
+[[ -f "$cfg_src" ]] || { echo "Missing $cfg_src"; exit 1; }
+[[ -f "$css_src" ]] || { echo "Missing $css_src"; exit 1; }
+
+ln -sf "$cfg_src" "$WAYBAR_DIR/config.jsonc"
+ln -sf "$css_src" "$WAYBAR_DIR/style.css"
+
+echo "$chosen" > "$STATE_FILE"
+
+# Reload Waybar
+if pgrep -x waybar >/dev/null; then
+  pkill -USR2 waybar || true
+else
+  nohup waybar >/dev/null 2>&1 &
+fi
+
+[[ "$NOTIFY" = ":" ]] || $NOTIFY "Waybar" "Layout: $chosen"
+

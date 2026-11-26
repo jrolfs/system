@@ -1,0 +1,54 @@
+/* Everforest Dark – Midnight skin */
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+
+/* ensure colors mode is on */
+body { --colors: on; }
+
+:root {
+  /* backgrounds (darkest -> lightest buttons) */
+  --bg-4: #14181b; /* main background */
+  --bg-3: #1e2429; /* secondary panels / spacing */
+  --bg-2: #283036; /* buttons / inputs */
+  --bg-1: #323c43; /* pressed/active */
+
+  /* text */
+  --text-1: #d3c6aa;                /* near-white text */
+  --text-2: color-mix(in srgb, #d3c6aa 85%, #14181b); /* headings */
+  --text-3: #859289;                /* normal text */
+  --text-4: #657366;                /* icons/channels */
+  --text-5: #5c6a72;                /* muted */
+
+  /* interaction surfaces */
+  --hover:  color-mix(in srgb, #7fbbb3 14%, transparent);  /* hover bg */
+  --active: color-mix(in srgb, #7fbbb3 22%, transparent);  /* selected/active */
+  --active-2: color-mix(in srgb, #7fbbb3 30%, transparent);
+  --message-hover: color-mix(in srgb, black 10%, transparent);
+
+  /* accent (use Everforest blue as primary) */
+  --accent-1: color-mix(in srgb, #7fbbb3 92%, white);
+  --accent-2: #7fbbb3;
+  --accent-3: color-mix(in srgb, #7fbbb3 86%, black);
+  --accent-4: color-mix(in srgb, #7fbbb3 72%, black);
+  --accent-5: color-mix(in srgb, #7fbbb3 60%, black);
+  --accent-new: var(--accent-2);
+
+  /* status colors */
+  --online:  #a7c080; /* green */
+  --dnd:     #e67e80; /* red */
+  --idle:    #dbbc7f; /* yellow */
+  --streaming:#d699b6;/* purple */
+  --offline: var(--text-4);
+
+  /* borders */
+  --border-light: color-mix(in srgb, #3c4851 35%, transparent);
+  --border:       color-mix(in srgb, #3c4851 55%, transparent);
+  --button-border: color-mix(in srgb, #ffffff 12%, transparent);
+
+  /* ramps (used across UI & statuses) */
+  --red-1:#e67e80; --red-2:#df6f72; --red-3:#d65f5f; --red-4:#c65353; --red-5:#b84a4a;
+  --green-1:#a7c080; --green-2:#9fbb78; --green-3:#8fb06a; --green-4:#7fa65f; --green-5:#6f9652;
+  --blue-1:#7fbbb3; --blue-2:#77b3ab; --blue-3:#6aa79f; --blue-4:#5e9b93; --blue-5:#518e87;
+  --yellow-1:#dbbc7f; --yellow-2:#d3b473; --yellow-3:#caa965; --yellow-4:#bfa05c; --yellow-5:#b39554;
+  --purple-1:#d699b6; --purple-2:#cf8eab; --purple-3:#c47ea0; --purple-4:#b66e92; --purple-5:#a85f85;
+}
+

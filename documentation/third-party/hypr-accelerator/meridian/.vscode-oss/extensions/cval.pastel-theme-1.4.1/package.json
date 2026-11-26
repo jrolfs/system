@@ -1,0 +1,54 @@
+{
+	"name": "pastel-theme",
+	"displayName": "Pastel",
+	"description": "For those who aren't afraid to get colourful",
+	"publisher": "cval",
+	"author": {
+		"name": "Chris Valente"
+	},
+	"version": "1.4.1",
+	"engines": {
+		"vscode": "^1.48.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ccvale/pastel-theme"
+	},
+	"bugs": {
+		"url": "https://github.com/ccvale/pastel-theme/issues"
+	},
+	"galleryBanner": {
+		"color": "#DF8598",
+		"theme": "dark"
+	},
+	"icon": "star.png",
+	"categories": [
+		"Themes"
+	],
+	"keywords": [
+		"ccvale",
+		"Chris Valente",
+		"pastel",
+		"pastel theme",
+		"pink",
+		"purple",
+		"blue",
+		"dark",
+		"dark mode",
+		"dark theme"
+	],
+	"contributes": {
+		"themes": [
+			{
+				"label": "Pastel",
+				"uiTheme": "vs-dark",
+				"path": "./themes/pastel-color-theme.json"
+			}
+		]
+	},
+	"__metadata": {
+		"installedTimestamp": 1761558149688,
+		"targetPlatform": "undefined",
+		"size": 181597
+	}
+}

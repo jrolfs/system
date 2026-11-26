@@ -1,0 +1,98 @@
+{
+  "$schema": "/etc/xdg/swaync/configSchema.json",
+  "ignore-gtk-theme": true,
+  "cssPriority": "user",
+
+  "positionX": "right",
+  "positionY": "top",
+
+  "control-center-width": 430,
+  "control-center-height": 900,
+
+  "control-center-margin-top": 2,
+  "control-center-margin-bottom": 2,
+  "control-center-margin-right": 0,
+  "control-center-margin-left": 0,
+
+  "notification-window-width": 400,
+
+  "notification-body-image-height": 160,
+  "notification-body-image-width": 200,
+
+  "timeout": 4,
+  "timeout-low": 2,
+  "timeout-critical": 6,
+
+  "fit-to-screen": true,
+  "keyboard-shortcuts": true,
+  "image-visibility": "when-available",
+  "script-fail-notify": true,
+
+  "widgets": [
+    "label",
+    "buttons-grid",
+    "volume",
+    "dnd",
+    "title",
+    "notifications"
+  ],
+
+  "widget-config": {
+    "title": {
+      "text": "Notifications",
+      "clear-all-button": true,
+      "button-text": " 󰎟 "
+    },
+
+    "dnd": {
+      "text": "Do not Disturb"
+    },
+
+    "label": {
+      "max-lines": 1,
+      "text": "Overwatch"
+    },
+
+    "volume": {
+      "label": "󰕾 ",
+      "show-per-app": false
+    },
+
+    "backlight": {
+      "label": "󰃠 ",
+      "device": "intel_backlight"
+    },
+
+    "buttons-grid": {
+      "buttons-per-row": 5,
+      "actions": [
+        {
+          "label": "󰖁",
+          "command": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+          "type": "toggle"
+        },
+
+        {
+          "label": "󰤨",
+          "command": "nm-connection-editor"
+        },
+
+        {
+          "label": "󰂯",
+          "command": "blueman-manager"
+        },
+
+        {
+          "label": "",
+          "command": "obs"
+        },
+
+        {
+          "label": "󰀝",
+          "command": "bash -c $HOME/.config/hypr/scripts/airplaneMode.sh",
+          "type": "toggle"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,91 @@
+@import "colors/colors.css";
+
+* {
+  font-family: "DM Sans", "JetBrainsMono Nerd Font Propo", sans-serif;
+  font-size: 16px;
+  border-radius: 50px;
+  font-weight: bold;
+}
+
+window#waybar {
+  background-color: transparent;
+  color: @fg;
+}
+
+.modules-right {
+  margin-right: 12px;
+}
+
+#workspaces {
+  background-color: @bg0;
+  padding: 2px 2px 2px 2px;
+  border-radius: 50px;
+  margin-left: 12px;
+}
+
+#workspaces button.active {
+  background-color: @blue;
+  color: @fg;
+  padding: 5px 24px;
+}
+
+#workspaces button.active:hover {
+  color: @blue;
+  background: inherit;
+}
+
+#workspaces button.empty {
+  color: @grey1;
+}
+
+#workspaces button {
+  background-color: transparent;
+  color: @grey2;
+  transition: margin 150ms ease-in-out, padding 150ms ease-in-out;
+  transition: background-color 0.3s ease, color 0.3s ease, padding 0.2s ease;
+}
+
+#workspaces button:hover {
+  background: @bg2;
+}
+
+#workspaces button.urgent {
+  background-color: @red;
+  color: @fg;
+}
+
+#battery,
+#pulseaudio,
+#backlight,
+#custom-pacman,
+#network,
+#clock,
+#custom-weather,
+#custom-media,
+#window,
+#cpu,
+#memory,
+#disk,
+#tray,
+#custom-launcher,
+#custom-notification,
+#power-profiles-daemon {
+  color: @blue;
+  background-color: @bg0;
+  padding: 0 15px 0 15px;
+  margin: 0 0 0 12px;
+}
+
+#window.hidden {
+    opacity: 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+}
+
+window#waybar.empty #window {
+    background-color: transparent;
+}
+

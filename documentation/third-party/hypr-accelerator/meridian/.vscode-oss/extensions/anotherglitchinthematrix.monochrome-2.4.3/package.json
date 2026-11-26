@@ -1,0 +1,97 @@
+{
+	"name": "monochrome",
+	"displayName": "Monochrome",
+	"description": "Monochromatic theme collection, for those who seeks.",
+	"publisher": "anotherglitchinthematrix",
+	"version": "2.4.3",
+	"license": "MIT",
+	"icon": "icon.png",
+	"galleryBanner": {
+		"color": "#1a1a1a",
+		"theme": "dark"
+	},
+	"author": {
+		"name": "Ali Can YILDIZ",
+		"email": "anotherglitchinthematrix@gmail.com"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/anotherglitchinthematrix/monochrome.git"
+	},
+	"bugs": {
+		"url": "https://github.com/anotherglitchinthematrix/monochrome/issues"
+	},
+	"engines": {
+		"vscode": "^1.43.0"
+	},
+	"categories": [
+		"Themes"
+	],
+	"keywords": [
+		"theme",
+		"light",
+		"dark",
+		"monochrome",
+		"minimal",
+		"minimalist",
+		"subtle"
+	],
+	"contributes": {
+		"themes": [
+			{
+				"label": "Monochrome Dark",
+				"uiTheme": "vs-dark",
+				"path": "./theme/monochrome-dark.json"
+			},
+			{
+				"label": "Monochrome Light",
+				"uiTheme": "vs",
+				"path": "./theme/monochrome-light.json"
+			},
+			{
+				"label": "Monochrome Dark Subtle",
+				"uiTheme": "vs-dark",
+				"path": "./theme/monochrome-dark-subtle.json"
+			},
+			{
+				"label": "Monochrome Light Subtle",
+				"uiTheme": "vs",
+				"path": "./theme/monochrome-light-subtle.json"
+			},
+			{
+				"label": "Monochrome Dark Amplified",
+				"uiTheme": "vs-dark",
+				"path": "./theme/monochrome-dark-amplified.json"
+			},
+			{
+				"label": "Monochrome Light Amplified",
+				"uiTheme": "vs",
+				"path": "./theme/monochrome-light-amplified.json"
+			},
+			{
+				"label": "Monochrome Dark Cool Gray",
+				"uiTheme": "vs-dark",
+				"path": "./theme/monochrome-dark-cool-gray.json"
+			},
+			{
+				"label": "Monochrome Light Cool Gray",
+				"uiTheme": "vs",
+				"path": "./theme/monochrome-light-cool-gray.json"
+			}
+		]
+	},
+	"devDependencies": {
+		"chroma-js": "^2.1.0",
+		"lodash.merge": "^4.6.2",
+		"nodemon": "^2.0.9"
+	},
+	"scripts": {
+		"start": "nodemon --watch src src/index.js",
+		"build": "node src/index.js"
+	},
+	"__metadata": {
+		"installedTimestamp": 1761715620806,
+		"targetPlatform": "undefined",
+		"size": 7087748
+	}
+}

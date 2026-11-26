@@ -1,0 +1,25 @@
+{
+  "colors": [
+    "#061115",
+    "#df5b61",
+    "#78b892",
+    "#ecd28b",
+    "#6791c9",
+    "#c488ec",
+    "#67afc1",
+    "#d9d7d6",
+    "#313c40",
+    "#f16269",
+    "#8cd7aa",
+    "#f6dc95",
+    "#79aaeb",
+    "#bc83e3",
+    "#7acfe4",
+    "#edebea"
+  ],
+  "special": {
+    "background": "#061115",
+    "foreground": "#d9d7d6",
+    "cursor": "#d9d7d6"
+  }
+}

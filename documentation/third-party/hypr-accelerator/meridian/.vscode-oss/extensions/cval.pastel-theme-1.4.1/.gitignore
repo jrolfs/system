@@ -1,0 +1,7 @@
+node_modules
+*.vsix
+*.txt
+.vscodeignore
+.vscode
+launch.json
+.DS_Store

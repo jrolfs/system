@@ -1,0 +1,54 @@
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+
+/* midnight-rose-pine.css — override colors for Rosé Pine (main) */
+:root{
+  /* text */
+  --text-1:#e0def4; /* text */
+  --text-2:#c4bfe6; /* subtle-ish */
+  --text-3:#908caa; /* body */
+  --text-4:#6e6a86; /* icons/secondary */
+  --text-5:#524f67; /* muted */
+
+  /* backgrounds */
+  --bg-4:#191724;   /* base */
+  --bg-3:#1f1d2e;   /* surface */
+  --bg-2:#26233a;   /* overlay / controls */
+  --bg-1:#403d52;   /* pressed */
+  --hover: color-mix(in hsl, #e0def4, transparent 92%);
+  --active: color-mix(in hsl, #e0def4, transparent 82%);
+  --active-2: color-mix(in hsl, #e0def4, transparent 72%);
+  --message-hover: color-mix(in hsl, #000, transparent 88%);
+
+  /* accents (foam/iris/pine) */
+  --accent-1:#9ccfd8; /* links (foam) */
+  --accent-2:#9ccfd8; /* brand */
+  --accent-3:#c4a7e7; /* filled button (iris) */
+  --accent-4:#3e8fb0; /* hover (pine) */
+  --accent-5:#286983; /* active (deep pine) */
+  --accent-new: var(--accent-2);
+  --mention: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 90%) 40%, transparent);
+  --mention-hover: linear-gradient(to right, color-mix(in hsl, var(--accent-2), transparent 95%) 40%, transparent);
+  --reply: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 90%) 40%, transparent);
+  --reply-hover: linear-gradient(to right, color-mix(in hsl, var(--text-3), transparent 95%) 40%, transparent);
+
+  /* status (mapped to Rosé Pine tones) */
+  --online:#3e8fb0;   /* pine (teal) */
+  --idle:#f6c177;     /* gold */
+  --dnd:#eb6f92;      /* love */
+  --streaming:#c4a7e7;/* iris */
+  --offline:var(--text-4);
+
+  /* borders */
+  --border-light: rgba(224,222,244,0.10);
+  --border: rgba(224,222,244,0.22);
+  --border-hover: rgba(224,222,244,0.30);
+  --button-border: rgba(255,255,255,0.10);
+
+  /* base semantic */
+  --red-1:#eb6f92; --red-2:#eb6f92; --red-3:#eb6f92; --red-4:#d35f83; --red-5:#b25170;
+  --green-1:#3e8fb0; --green-2:#3e8fb0; --green-3:#3e8fb0; --green-4:#31748f; --green-5:#255a71;
+  --blue-1:#9ccfd8; --blue-2:#9ccfd8; --blue-3:#9ccfd8; --blue-4:#7bb8c3; --blue-5:#5e9eaa;
+  --yellow-1:#f6c177; --yellow-2:#f6c177; --yellow-3:#f6c177; --yellow-4:#d9a861; --yellow-5:#b88e50;
+  --purple-1:#c4a7e7; --purple-2:#c4a7e7; --purple-3:#c4a7e7; --purple-4:#ad94cd; --purple-5:#947eb1;
+}
+

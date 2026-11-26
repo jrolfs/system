@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# ━┏┛┃ ┃┏━┛┏┏ ┏━┛  ┏━┛┃┃┃┛━┏┛┏━┛┃ ┃┏━┛┏━┃
+#  ┃ ┏━┃┏━┛┃┃┃┏━┛  ━━┃┃┃┃┃ ┃ ┃  ┏━┃┏━┛┏┏┛
+#  ┛ ┛ ┛━━┛┛┛┛━━┛  ━━┛━━┛┛ ┛ ━━┛┛ ┛━━┛┛ ┛
+
+# -- To learn how to make something like this yourself, check out https://sane1090x.gumroad.com/l/hypraccelerator -- #
+
+# Directory containing wallpapers
+WALL_DIR="$HOME/Pictures/Wallpapers"
+
+# Current directory (to cd back to)
+CWD="$(pwd)"
+
+cd "$WALL_DIR" || exit 1
+
+# Handle spaces in filenames
+IFS=$'\n'
+
+# Grab the user-selected wallpaper
+SELECTED_WALL=$(for a in *.jpg *.png; do echo -en "$a\0icon\x1f$a\n" ; done | rofi -dmenu -p "Choose Wallpaper" -theme "~/.config/rofi/launchers/type-2/style-13.rasi")
+
+# If not empty, pass to walset-backend
+if [ -n "$SELECTED_WALL" ]; then
+    walset-backend "$SELECTED_WALL"
+fi
+
+# Go back to where you came from
+cd "$CWD" || exit 1
+

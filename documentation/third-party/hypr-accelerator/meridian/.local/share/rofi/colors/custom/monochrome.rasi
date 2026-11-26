@@ -1,0 +1,18 @@
+* {
+  bg0:     #121212;
+  bg1:     #1e1e1e;
+  bg2:     #2a2a2a;
+  bg3:     #333333;
+  bg4:     #444444;
+  text:    #e6e6e6;
+  red:     #b0a0a5;
+  orange:  #b0a8a0;
+  yellow:  #b0ada0;
+  green:   #a5b0a0;
+  aqua:    #9cb0ad;
+  blue:    #9ca8b0;
+  purple:  #a89cb0;
+  grey0:   #555a60;
+  grey1:   #888c94;
+  grey2:   #b9bdc2;
+}

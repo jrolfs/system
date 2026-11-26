@@ -1,0 +1,29 @@
+# wallust v4, unified theming engine.
+# Sources (all feed the same templates + hooks):
+#   wallust cs <path-to-colorscheme.json>   curated (exact colors). Use the full
+#       path to avoid clashing with built-in theme names.
+#   wallust run <image>                      dynamic palette from a wallpaper
+#   wallust theme <name>                     built-in theme
+
+backend = "fastresize"
+palette = "salience"
+
+[templates]
+# Quickshell shell: writes colors.json; Theme.qml reads it live (no reload hook).
+quickshell = { template = 'quickshell-colors.json', target = '~/.config/quickshell/colors.json' }
+kitty      = { template = 'kitty.conf',  target = '~/.config/kitty/colors/wallust.conf' }
+hyprland   = { template = 'hyprland.lua', target = '~/.config/hypr/colors/custom/wallust.lua' }
+foot       = { template = 'foot.ini',    target = '~/.config/foot/colors/custom/wallust' }
+discord    = { template = 'discord.css', target = '~/.config/vesktop/themes/custom/wallust.theme.css' }
+# GTK is NOT templated by wallust (option B): the custom GTK 3/4 themes are kept
+# and switched by theme-apply.sh (symlink the per-theme gtk-4.0 + gsettings name).
+
+[hooks]
+# NOTE: wallust runs [hooks] only on `wallust run` (image), NOT on `cs`/`theme`.
+# Curated switches go through theme-apply.sh which reloads apps itself.
+# Quickshell needs no hook, Theme.qml's FileView reloads on change.
+# foot/discord need none, new terminals pick up colors; Vesktop hot-reloads CSS.
+kitty    = "pkill -USR1 kitty || true"
+hyprland = "hyprctl reload || true"
+
+[templated_hooks]

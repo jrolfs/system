@@ -1,0 +1,22 @@
+* {
+  bg0:    #0a0f0b;   // surface_container_lowest
+  bg1:    #181d18;      // surface_container_low
+  bg2:    #1c211c;          // surface_container
+  bg3:    #262b26;     // surface_container_high
+  bg4:    #313631;  // surface_container_highest
+
+  text:   #dfe4dc;                 // on_surface
+
+  red:    #ffb4ab;                      // error
+  orange: #ffdad6;         // on_error_container
+  yellow: #b2f1bf;       // on_primary_container
+  green:  #b6ccb8;                  // secondary
+  aqua:   #97d5a5;                    // primary
+  blue:   #14512d;          // primary_container
+  purple: #a2ced9;                   // tertiary
+
+  grey0:  #414941;            // surface_variant
+  grey1:  #414941;            // outline_variant
+  grey2:  #c1c9bf;         // on_surface_variant
+}
+

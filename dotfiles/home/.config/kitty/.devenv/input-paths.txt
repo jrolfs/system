@@ -1,0 +1,11 @@
+/Users/jamie/.config/nixpkgs/overlays
+/Users/jamie/.config/nixpkgs/overlays.nix
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/.devenv/bootstrap/bootstrapLib.nix
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/.devenv/bootstrap/default.nix
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/.devenv/bootstrap/resolve-lock.nix
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/.env
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/devenv.local.nix
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/devenv.lock
+/Users/jamie/.config/system/dotfiles/home/.config/kitty/devenv.nix
+/Users/jamie/.config/system/flake.lock
+/tmp/devenv-a77f086/processes/native-manager.pid

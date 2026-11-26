@@ -1,0 +1,87 @@
+{
+	"name": "material-product-icons",
+	"displayName": "Material Product Icons",
+	"description": "Product Icon Theme with Material Icons for VS Code",
+	"version": "1.7.1",
+	"publisher": "PKief",
+	"author": {
+		"name": "Philipp Kief",
+		"email": "philipp.kief@gmx.de",
+		"url": "https://pkief.com"
+	},
+	"funding": "https://github.com/sponsors/PKief",
+	"sponsor": {
+		"url": "https://github.com/sponsors/PKief"
+	},
+	"engines": {
+		"vscode": "^1.53.0"
+	},
+	"scripts": {
+		"start": "nodemon ./src/index.ts",
+		"build": "ts-node ./src/index.ts",
+		"lint": "npx @biomejs/biome check --write ./src",
+		"format": "npx @biomejs/biome format --write ./",
+		"preview": "ts-node ./src/scripts/preview/index.ts",
+		"changelog": "changelog-machine --config changelog.config.json",
+		"preversion": "npm run preview && git add images/preview.png",
+		"version": "npm run changelog && git add CHANGELOG.md"
+	},
+	"homepage": "https://github.com/material-extensions/vscode-material-product-icons/blob/master/README.md",
+	"repository": {
+		"url": "https://github.com/material-extensions/vscode-material-product-icons.git",
+		"type": "git"
+	},
+	"bugs": {
+		"url": "https://github.com/material-extensions/vscode-material-product-icons/issues"
+	},
+	"icon": "logo.png",
+	"galleryBanner": {
+		"color": "#1e1e1e",
+		"theme": "dark"
+	},
+	"extensionKind": [
+		"ui",
+		"workspace"
+	],
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": true
+		},
+		"virtualWorkspaces": true
+	},
+	"categories": [
+		"Themes"
+	],
+	"keywords": [
+		"icons",
+		"theme",
+		"material",
+		"icon-theme",
+		"product-icon-theme",
+		"customization"
+	],
+	"contributes": {
+		"productIconThemes": [
+			{
+				"id": "material-product-icons",
+				"label": "Material Product Icons",
+				"path": "./theme/material.product-icon-theme.json"
+			}
+		]
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.8.3",
+		"@types/puppeteer": "^7.0.4",
+		"changelog-machine": "^1.0.2",
+		"nodemon": "^3.1.4",
+		"puppeteer": "^22.13.0",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.5.3",
+		"webfont": "^11.2.26"
+	},
+	"__metadata": {
+		"installedTimestamp": 1761460540032,
+		"targetPlatform": "undefined",
+		"size": 108867
+	}
+}

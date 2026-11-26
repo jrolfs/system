@@ -1,0 +1,87 @@
+{
+  "layer": "top",
+  "modules-left": ["custom/launcher", "hyprland/workspaces"],
+  "modules-center": ["custom/media"],
+  "modules-right": ["pulseaudio", "network", "battery", "clock", "custom/time"],
+
+  "custom/launcher": {
+    "format": "",
+    "on-click": "bash /home/$USER/.config/waybar/scripts/app-launcher.sh",
+    "tooltip-format": "Launch your favorite apps"
+  },
+
+  "battery": {
+    "format": "{icon}",
+    "format-charging": "󰂄",
+    // "format-icons": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"],
+    "format-icons": ["", "", "", "", ""],
+    "tooltip-format": "Battery is at {capacity}%" 
+  },
+
+  "custom/time": {
+    "format": "{}",
+    "interval": 5,
+    "exec": "date +%H:%M",
+    "tooltip": false
+  },
+
+  "clock": {
+    "format": "{:%a %d %b}",
+    "tooltip": false
+  },
+
+  "hyprland/workspaces": {
+    "format": "{name}"
+  },
+
+  "hyprland/window": {
+    "format": "{class}",
+    "separate-outputs": true
+  },
+
+  "network": {
+    "interface": "wlo1",
+    "format": "{ifname}",
+    "format-wifi": "{icon}",
+    "format-ethernet": "{ipaddr}/{cidr} 󰊗",
+    "format-disconnected": "", //An empty format will hide the module.
+    "tooltip-format": "{ifname} via {gwaddr} 󰊗",
+    "tooltip-format-wifi": "Connected to {essid} ({signalStrength}%)",
+    "tooltip-format-ethernet": "{ifname} ",
+    "tooltip-format-disconnected": "Disconnected",
+    "max-length": 50,
+    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
+  },
+
+  "pulseaudio": {
+    "format": "{icon}",
+    "format-bluetooth": "󰂱",
+    "format-muted": "󰖁",
+    "scroll-step": 1,
+    "on-click": "pavucontrol",
+    "ignored-sinks": ["Easy Effects Sink"],
+    "format-icons": {
+      "headphone": "",
+      "hands-free": "",
+      "headset": "󰋎",
+      "phone": "",
+      "portable": "",
+      "car": "",
+      "default": ["󰖀", "󰕾"]
+    },
+    "tooltip-format": "Volume: {volume}%"
+  },
+
+  "custom/media": {
+    "format": "{}",
+    "escape": true,
+    "return-type": "json",
+    "max-length": 40,
+    "on-click": "playerctl play-pause",
+    "on-click-right": "playerctl stop",
+    "smooth-scrolling-threshold": 1, // This value was tested using a trackpad, it should be lowered if using a mouse.
+    "on-scroll-up": "playerctl next",
+    "on-scroll-down": "playerctl previous",
+    "exec": "$HOME/.config/waybar/scripts/mediaplayer.py 2> /dev/null" // Script in resources/custom_modules folder
+  }
+}

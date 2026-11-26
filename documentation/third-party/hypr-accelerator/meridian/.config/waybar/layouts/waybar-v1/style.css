@@ -1,0 +1,83 @@
+@import "colors/colors.css";
+
+* {
+    border: none;
+    font-family: "JetBrainsMono Nerd Font";
+    font-size: 1rem;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+window#waybar {
+    background: transparent;
+    color: @fg;
+}
+
+.modules-left,
+.modules-right {
+    margin: 0 20px;
+}
+
+tooltip {
+  background: @bg0;
+  border: 1px solid rgba(100, 114, 125, 0.5);
+}
+tooltip label {
+  color: @fg;
+}
+
+#workspaces {
+    background-color: transparent;
+    transition: all 200ms ease-in-out;
+}
+
+#workspaces button {
+    background-color: @blue;
+    color: @bg3;
+    padding: 0 7px;
+    margin: 0 2px;
+    border-radius: 2px;
+    transition: all 200ms ease-in-out;
+}
+
+#workspaces button.active {
+    background-color: @bg3;
+    color: @fg;
+    padding: 0 15px;
+    border-radius: 7px;
+    transition: all 250ms ease-in-out;
+    font-weight: 700;
+}
+
+#workspaces button:hover {
+    color: @bg0;
+}
+
+#clock,
+#battery,
+#pulseaudio,
+#network {
+    border-radius: 3px;
+    background-color: @blue;
+    color: #121212;
+    margin: 0 5px;
+    padding: 0 11px;
+}
+
+#window {
+    margin: 0 5px;
+}
+
+#clock {
+    padding: 0 7px;
+    font-weight: 500;
+}
+
+#pulseaudio {
+	padding: 0 10px;
+}
+
+#battery {
+	padding: 0 8px;
+}

@@ -1,0 +1,19 @@
+/**
+ * Catppuccin Mocha + Figtree font override
+ */
+@import url("https://catppuccin.github.io/discord/dist/catppuccin-mocha.theme.css");
+
+/* 1) Load Figtree from Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap");
+
+/* 2) Override Discord font variables (put AFTER the theme import) */
+:root, .theme-dark, .theme-light, body {
+  --font-primary: "Figtree", "gg sans", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  --font-display: "Figtree", "gg sans", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  /* keep code blocks monospace; change if you want */
+  --font-code: "gg mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* (Optional) If some UI bits still ignore vars, gently force the base font */
+body { font-family: var(--font-primary) !important; }
+

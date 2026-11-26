@@ -1,0 +1,53 @@
+/* Kanagawa – Midnight skin */
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+
+body { --colors: on; }
+
+:root {
+  /* sumi ink backgrounds */
+  --bg-4: #1F1F28; /* main */
+  --bg-3: #2A2A37; /* secondary */
+  --bg-2: #363646; /* buttons/inputs */
+  --bg-1: #223249; /* pressed / raised */
+
+  /* text */
+  --text-1: #DCD7BA; /* fujiWhite */
+  --text-2: color-mix(in srgb, #DCD7BA 85%, #1F1F28);
+  --text-3: #C8C093; /* oldWhite */
+  --text-4: #727169; /* fujiGray */
+  --text-5: #54546D; /* muted */
+
+  /* interaction */
+  --hover:  color-mix(in srgb, #7E9CD8 14%, transparent);
+  --active: color-mix(in srgb, #7E9CD8 22%, transparent);
+  --active-2: color-mix(in srgb, #7E9CD8 30%, transparent);
+  --message-hover: color-mix(in srgb, black 10%, transparent);
+
+  /* accent (crystalBlue) */
+  --accent-1: color-mix(in srgb, #7E9CD8 92%, white);
+  --accent-2: #7E9CD8;
+  --accent-3: color-mix(in srgb, #7E9CD8 86%, black);
+  --accent-4: color-mix(in srgb, #7E9CD8 72%, black);
+  --accent-5: color-mix(in srgb, #7E9CD8 60%, black);
+  --accent-new: var(--accent-2);
+
+  /* statuses */
+  --online:  #98BB6C; /* springGreen */
+  --dnd:     #E82424; /* samuraiRed */
+  --idle:    #E6C384; /* carpYellow */
+  --streaming:#957FB8; /* oniViolet */
+  --offline: var(--text-4);
+
+  /* borders */
+  --border-light: color-mix(in srgb, #54546D 30%, transparent);
+  --border:       color-mix(in srgb, #54546D 55%, transparent);
+  --button-border: color-mix(in srgb, #ffffff 10%, transparent);
+
+  /* ramps */
+  --red-1:#E82424; --red-2:#d52222; --red-3:#c31f1f; --red-4:#ad1b1b; --red-5:#981818;
+  --green-1:#98BB6C; --green-2:#8eb163; --green-3:#81a557; --green-4:#759a4d; --green-5:#698f44;
+  --blue-1:#7E9CD8; --blue-2:#7694cf; --blue-3:#6c89c4; --blue-4:#617fb8; --blue-5:#5874ac;
+  --yellow-1:#E6C384; --yellow-2:#d9b77a; --yellow-3:#caa96e; --yellow-4:#bb9b63; --yellow-5:#ac8d59;
+  --purple-1:#957FB8; --purple-2:#8b76af; --purple-3:#806aa3; --purple-4:#745f97; --purple-5:#68548b;
+}
+

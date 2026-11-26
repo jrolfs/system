@@ -1,0 +1,143 @@
+@import "colors/colors.css";
+
+* {
+  border: none;
+  border-radius: 0px;
+  font-family: "SF Pro Display", "JetBrainsMono Nerd Font Propo";
+  font-size: 16px;
+  min-height: 0;
+  font-weight: bold;
+}
+
+window#waybar {
+  background: transparent;
+}
+
+.modules-right {
+  margin-right: 12px;
+}
+
+tooltip {
+  background: @bg0;
+  border: 1px solid @blue;
+  border-radius: 12px;
+}
+
+tooltip label {
+  color: @fg;
+  padding: 6px;
+}
+
+#workspaces {
+  background: @bg0;
+  padding: 8px 5px;
+  border-radius: 16px;
+  color: @fg;
+}
+
+#workspaces button {
+  padding: 0px 6px;
+  margin: 0px 3px;
+  border-radius: 50px;
+  color: transparent;
+  background: @bg1;
+  transition: all 0.3s ease-in-out;
+}
+
+#workspaces button.active {
+  background-color: @blue;
+  color: @bg0;
+  min-width: 50px;
+  transition: all 0.3s ease-in-out;
+  font-size: 13px;
+}
+
+#workspaces button:hover {
+  background-color: @purple;
+  color: @bg0;
+  border-radius: 16px;
+  min-width: 50px;
+  background-size: 400% 400%;
+}
+
+#workspaces button.urgent {
+  background-color: @red;
+  color: @bg0;
+  border-radius: 16px;
+  min-width: 50px;
+  background-size: 400% 400%;
+  transition: all 0.3s ease-in-out;
+}
+
+#battery,
+#pulseaudio,
+#backlight,
+#custom-pacman,
+#network,
+#clock,
+#custom-weather,
+#custom-media,
+#window,
+#custom-launcher,
+#custom-notification,
+#submap,
+#power-profiles-daemon,
+#custom-home-folder {
+  background-color: @bg0;
+  padding: 0 15px 0 15px;
+  margin: 0 0 0 12px;
+  border-radius: 50px;
+}
+
+#submap {
+  color: @aqua;
+}
+
+#custom-launcher {
+  color: @fg;
+}
+
+#clock {
+  color: @blue;
+}
+
+#custom-media {
+  color: @aqua;
+}
+
+#custom-weather {
+  color: @yellow;
+}
+
+#custom-notification {
+  color: @fg;
+}
+
+#power-profiles-daemon {
+  color: @fg;
+}
+
+#custom-pacman {
+  color: @orange;
+}
+
+#pulseaudio {
+  color: @yellow;
+}
+
+#network {
+  color: @purple;
+}
+
+#battery {
+  color: @green;
+  margin: 0 10px 0 10px;
+}
+
+#custom-home-folder {
+  color: @aqua;
+}
+
+#custom-notification {
+  margin: 0 12px 0 0;
+}

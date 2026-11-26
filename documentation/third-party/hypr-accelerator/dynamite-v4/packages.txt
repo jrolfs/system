@@ -1,0 +1,27 @@
+# Packages the shell needs (Arch / AUR, installed with paru or yay).
+# Lines starting with # are ignored by install.sh.
+
+# Required: the shell plus the tools it shells out to
+quickshell-git        # the shell itself (Qt6/QtQuick Wayland toolkit)
+brightnessctl         # internal-display backlight
+ddcutil               # external-monitor brightness over DDC/CI
+cliphist              # clipboard history (launcher ':' mode)
+wl-clipboard          # wl-copy / wl-paste
+hyprsunset            # Night Light
+wallust               # palette engine for the theme switcher
+cava                  # audio levels for the island's media card
+ttf-jetbrains-mono-nerd   # nerd-font glyphs
+
+# Optional: only if you bind media keys to playerctl (media itself is native MPRIS)
+playerctl
+
+# Platform: a normal Hyprland desktop already has these. Uncomment any you're missing.
+# hyprland
+# xdg-desktop-portal-hyprland
+# pipewire
+# wireplumber
+# networkmanager
+# bluez
+# bluez-utils
+# upower
+# polkit

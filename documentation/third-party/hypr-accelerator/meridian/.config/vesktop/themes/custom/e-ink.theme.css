@@ -1,0 +1,44 @@
+/* Noir – E-ink light skin */
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+body { --colors: on; }
+:root {
+  /* backgrounds - inverted for light theme */
+  --bg-4: #e6e6e6;
+  --bg-3: #bcbcbc;
+  --bg-2: #888888;
+  --bg-1: #555555;
+  /* text - inverted for light theme */
+  --text-1: #0a0a0a;
+  --text-2: color-mix(in srgb, #0a0a0a 82%, #e6e6e6);
+  --text-3: #141414;
+  --text-4: #1f1f1f;
+  --text-5: #2b2b2b;
+  /* interaction */
+  --hover:  color-mix(in srgb, #555555 12%, transparent);
+  --active: color-mix(in srgb, #555555 20%, transparent);
+  --active-2: color-mix(in srgb, #555555 28%, transparent);
+  --message-hover: color-mix(in srgb, black 6%, transparent);
+  /* accent (e-ink gray accent) */
+  --accent-1: color-mix(in srgb, #555555 92%, white);
+  --accent-2: #555555;
+  --accent-3: color-mix(in srgb, #555555 86%, white);
+  --accent-4: color-mix(in srgb, #555555 72%, white);
+  --accent-5: color-mix(in srgb, #555555 60%, white);
+  --accent-new: var(--accent-2);
+  /* statuses (grayscale for e-ink) */
+  --online:  #888888;
+  --dnd:     #555555;
+  --idle:    #777777;
+  --streaming:#bbbbbb;
+  --offline: var(--text-4);
+  /* borders */
+  --border-light: color-mix(in srgb, #363636 25%, transparent);
+  --border:       color-mix(in srgb, #363636 45%, transparent);
+  --button-border: color-mix(in srgb, #000000 11%, transparent);
+  /* ramps (grayscale) */
+  --red-1:#555555; --red-2:#4f4f4f; --red-3:#494949; --red-4:#434343; --red-5:#3d3d3d;
+  --green-1:#888888; --green-2:#7f7f7f; --green-3:#767676; --green-4:#6d6d6d; --green-5:#646464;
+  --blue-1:#aaaaaa; --blue-2:#9f9f9f; --blue-3:#949494; --blue-4:#898989; --blue-5:#7e7e7e;
+  --yellow-1:#777777; --yellow-2:#6f6f6f; --yellow-3:#676767; --yellow-4:#5f5f5f; --yellow-5:#575757;
+  --purple-1:#bbbbbb; --purple-2:#b0b0b0; --purple-3:#a5a5a5; --purple-4:#9a9a9a; --purple-5:#8f8f8f;
+}

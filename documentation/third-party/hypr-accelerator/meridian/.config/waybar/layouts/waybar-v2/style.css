@@ -1,0 +1,74 @@
+@import "colors/colors.css";
+
+* {
+    border: none;
+    font-family: "Adwaita Sans", "JetBrainsMono Nerd Font";
+    font-size: 1rem;
+    font-weight: 700;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+window#waybar {
+    background: transparent;
+    color: @fg;                   /* @on_surface → @fg */
+}
+
+.modules-left,
+.modules-right {
+    margin: 0 150px;
+}
+
+tooltip {
+  background: @bg1;               /* @background → @bg1 */
+  border: 1px solid rgba(100, 114, 125, 0.5);
+}
+tooltip label {
+  color: @fg;                     /* @on_surface → @fg */
+}
+
+#workspaces {
+    background-color: transparent;
+    transition: all 200ms ease-in-out;
+}
+
+#workspaces button {
+    background-color: @purple;     /* @secondary → @purple */
+    color: @bg2;                   /* @inverse_primary → map to bg2 */
+    border-radius: 2px;
+    transition: all 200ms ease-in-out;
+    margin: 0 2px;
+}
+
+#workspaces button.active {
+    background-color: @bg2;        /* @inverse_primary → bg2 */
+    color: @fg;                    /* @on_surface → @fg */
+    border-radius: 7px;
+    transition: all 250ms ease-in-out;
+    font-weight: 700;
+    min-width: 40px;
+}
+
+#workspaces button:hover {
+    color: @bg1;                   /* @background → @bg1 */
+}
+
+#clock,
+#battery,
+#pulseaudio,
+#network,
+#cpu,
+#memory,
+#backlight {
+    border-radius: 3px;
+    background-color: @blue;       /* @primary → @blue */
+    color: @bg2;                   /* @surface → @bg2 */
+    padding: 2px 10px;
+    margin: 0 5px;
+}
+
+#clock {
+    margin: 0 10px;
+}
+

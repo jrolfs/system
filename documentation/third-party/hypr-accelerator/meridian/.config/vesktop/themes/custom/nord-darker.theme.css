@@ -1,0 +1,60 @@
+/* Nord — Midnight skin (high-contrast tuned) */
+@import url('https://refact0r.github.io/midnight-discord/build/midnight.css');
+body { --colors: on; }
+
+:root{
+  /* backgrounds */
+  --bg-4:#2e3440;   /* main */
+  --bg-3:#2b303b;   /* darker than nord1 for contrast */
+  --bg-2:#3b4252;   /* controls */
+  --bg-1:#434c5e;   /* pressed */
+
+  /* text (brightened tiers) */
+  --text-1:#eceff4; /* brightest */
+  --text-2:#e5e9f0; /* headings/important */
+  --text-3:#dfe5ec; /* normal body (↑ from nord4) */
+  --text-4:#b7c2d1; /* icons/secondary (↑ a lot) */
+  --text-5:#8fa1b3; /* muted/timestamps (↑) */
+
+  /* interaction */
+  --hover:  color-mix(in srgb, var(--text-1) 14%, transparent);
+  --active: color-mix(in srgb, var(--text-1) 22%, transparent);
+  --active-2: color-mix(in srgb, var(--text-1) 30%, transparent);
+  --message-hover: rgba(0,0,0,0.10);
+
+  /* accents (Nord Frost) */
+  --accent-1:#8fbcbb;
+  --accent-2:#88c0d0; /* brand */
+  --accent-3:#81a1c1;
+  --accent-4:#5e81ac;
+  --accent-5:#4c566a;
+  --accent-new: var(--accent-2);
+
+  /* status */
+  --online:#a3be8c; --idle:#ebcb8b; --dnd:#bf616a; --streaming:#b48ead; --offline:var(--text-4);
+
+  /* borders */
+  --border-light: rgba(76,86,106,0.20);
+  --border:       rgba(76,86,106,0.34);
+  --border-hover: rgba(76,86,106,0.44);
+  --button-border: rgba(255,255,255,0.12);
+
+  /* semantic ramps (unchanged feel) */
+  --red-1:#bf616a; --red-2:#b25760; --red-3:#a64f57; --red-4:#8f434b; --red-5:#7a3a41;
+  --green-1:#a3be8c; --green-2:#97b382; --green-3:#8aa775; --green-4:#7c9968; --green-5:#6f8c5d;
+  --blue-1:#8fbcbb; --blue-2:#81a1c1; --blue-3:#5e81ac; --blue-4:#4f6f94; --blue-5:#445e7a;
+  --yellow-1:#ebcb8b; --yellow-2:#dfc07f; --yellow-3:#d1b272; --yellow-4:#c2a367; --yellow-5:#b3945b;
+  --purple-1:#b48ead; --purple-2:#a57fa0; --purple-3:#95718f; --purple-4:#83627e; --purple-5:#71546d;
+}
+
+/* Contrast patch for Nord (put after midnight’s own variable block) */
+@container root style(--colors: on) {
+  .visual-refresh .theme-dark, .visual-refresh .theme-light {
+    --channels-default: var(--text-3);
+    --channel-icon: var(--text-3);
+    --header-secondary: var(--text-3);
+    --interactive-normal: var(--text-3);
+    --chat-text-muted: var(--text-5);
+  }
+}
+

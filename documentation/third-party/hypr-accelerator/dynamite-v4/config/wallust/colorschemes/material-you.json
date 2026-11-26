@@ -1,0 +1,25 @@
+{
+  "colors": [
+    "#271d1c",
+    "#ffb4ab",
+    "#dfc38c",
+    "#e7bdb7",
+    "#ffb4a9",
+    "#574419",
+    "#5d3f3b",
+    "#f1dedc",
+    "#322826",
+    "#ffb4ab",
+    "#dfc38c",
+    "#e7bdb7",
+    "#ffb4a9",
+    "#574419",
+    "#5d3f3b",
+    "#f1dedc"
+  ],
+  "special": {
+    "background": "#1a1110",
+    "foreground": "#f1dedc",
+    "cursor": "#f1dedc"
+  }
+}

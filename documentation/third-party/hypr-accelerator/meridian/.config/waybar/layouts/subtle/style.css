@@ -1,0 +1,189 @@
+/*
+## -- Subtle Waybar theme -- ##
+## Author: sane1090x
+## YouTube: https://youtube.com/@sane1090x
+*/
+
+/* --- Import your palette (defines @bg0..@bg4, @fg, @red, @orange, @yellow, @green, @aqua, @blue, @purple, @grey0..2) --- */
+@import "colors/colors.css";
+
+/* --- Global settings --- */
+* {
+  font-size: 15px;
+  font-family: "SF Pro Text", "JetBrainsMono Nerd Font Propo";
+  font-weight: bold;
+}
+
+window#waybar {
+  all: unset;
+}
+
+/* --- Module island settings --- */
+.modules-left,
+.modules-center,
+.modules-right {
+  padding: 7px;
+  margin: 0 13px;
+  border-radius: 10px;
+  background: alpha(@bg1, 0.6);            /* @background → @bg1 */
+  box-shadow: 0px 0px 2px rgba(0, 0, 0, .6);
+}
+
+/* --- Tooltip settings --- */
+tooltip {
+  background: @bg1;                        /* @background → @bg1 */
+  border: 2px solid @blue;                 /* @primary → @blue */
+  border-radius: 12px;
+}
+
+tooltip-label {
+  color: @fg;                              /* @on_surface → @fg */
+  padding: 5px;
+}
+
+/* --- Separator --- */
+#custom-separator {
+  padding: 0 10px 0 15px;
+  color: alpha(@fg, 0.7);                  /* @on_surface → @fg */
+}
+
+/* --- Modules --- */
+#bluetooth,
+#pulseaudio,
+#network,
+#custom-weather,
+#battery,
+#power-profiles-daemon,
+#custom-notification,
+#clock,
+#custom-pacman,
+#custom-media {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+  color: @fg;                               /* @on_surface → @fg */
+}
+
+/* --- Modules on hover --- */
+#clock:hover,
+#custom-pacman:hover,
+#custom-notification:hover,
+#bluetooth:hover,
+#network:hover,
+#battery:hover,
+#cpu:hover,
+#memory:hover,
+#pulseaudio:hover,
+#temperature:hover,
+#power-profiles-daemon:hover,
+#custom-weather:hover,
+#custom-media:hover,
+#custom-expandleft:hover {
+  transition: all 0.3s ease;
+  color: @aqua;                             /* @tertiary → @aqua */
+}
+
+/* --- Workspace settings --- */
+#workspaces {
+  padding: 0px 5px;
+}
+
+#workspaces button {
+  all: unset;
+  padding: 0px 5px;
+  color: alpha(@blue, 0.4);                 /* @primary → @blue */
+  transition: all 0.2s ease;
+}
+
+#workspaces button:hover {
+  color: rgba(0, 0, 0, 0);
+  border: none;
+  transition: all 1s ease;
+}
+
+#workspaces button.active {
+  color: @blue;                             /* @primary → @blue */
+  border: none;
+}
+
+#workspaces button.empty {
+  color: rgba(0, 0, 0, 0);
+  border: none;
+}
+
+#workspaces button.empty:hover {
+  color: rgba(0, 0, 0, 0);
+  border: none;
+  transition: all 1s ease;
+}
+
+#workspaces button.empty.active {
+  color: @fg;                               /* @on_surface → @fg */
+  border: none;
+}
+
+/* --- Battery --- */
+#battery.charging {
+  color: @aqua;                             /* @tertiary → @aqua (use @green if you prefer) */
+}
+
+#battery.warning:not(.charging) {
+  color: @yellow;                           /* @error → @red originally; warning reads better as @yellow */
+}
+
+#battery.critical:not(.charging) {
+  color: @orange;                           /* @error_container → @orange */
+  animation-name: blink;
+  animation-duration: 0.5s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+/* --- Drawers --- */
+#group-expand {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+}
+
+#custom-expand,
+#custom-expandleft {
+  padding: 0px 5px;
+  color: alpha(@fg, 0.9);                   /* @on_surface → @fg */
+  transition: all 0.3s ease;
+}
+
+#custom-expand:hover {
+  color: alpha(@fg, 0.2);                   /* rgba(255,255,255,0.2) → alpha(@fg,0.2) */
+}
+
+/* --- Stats --- */
+#cpu,
+#memory,
+#temperature {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+  color: @fg;                               /* @on_surface → @fg */
+}
+
+/* --- Tray --- */
+#tray {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+}
+
+#tray menu * {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+}
+
+#tray menu separator {
+  padding: 0px 5px;
+  transition: all 0.3s ease;
+}
+
+/* --- Blink anim for critical battery --- */
+@keyframes blink {
+  from { color: @orange; }
+  to   { color: alpha(@orange, 0.4); }
+}
+
