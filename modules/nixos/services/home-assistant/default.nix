@@ -61,6 +61,11 @@ in
           "google_translate"
           "group"
           "homekit"
+          # Not configured on Leia, but every HomeKit accessory on the LAN
+          # (Home Assistant's own bridges included) is discovered through it,
+          # and an undeclared integration turns each discovery into a
+          # ModuleNotFoundError for aiohomekit instead of a dismissable card.
+          "homekit_controller"
           "hue"
           "lifx"
           "lutron_caseta"
@@ -104,6 +109,9 @@ in
           custom.ha-hatch
         ];
 
+        # Libraries a declared integration needs that nixpkgs doesn't package.
+        extraPackages = _: [ custom.broadlink-async ];
+
         # Translated from rolfs.lan's tracked configuration.yaml. Strings
         # starting with "!" are written out as YAML tags, so the includes stay
         # includes and the UI keeps editing automations.yaml, scripts.yaml and
@@ -137,6 +145,11 @@ in
 
           homeassistant.packages = "!include_dir_named ${./packages}";
 
+          # The Docker image starts a bundled go2rtc by itself; anywhere else
+          # Home Assistant needs one already running, and fails to set up
+          # go2rtc ("URL required in non-docker installs") without this.
+          go2rtc.url = "http://127.0.0.1:1984";
+
           http = {
             use_x_forwarded_for = true;
             trusted_proxies = [ traefik ];
@@ -160,6 +173,16 @@ in
       # Python Matter Server, the same version as Leia's container. Home
       # Assistant reaches it at ws://localhost:5580/ws, so its port stays
       # closed to the LAN.
+      # Camera streaming for Home Assistant, on localhost only: nothing but Home
+      # Assistant talks to it, and go2rtc's API has no authentication.
+      services.go2rtc = {
+        enable = true;
+        settings = {
+          api.listen = "127.0.0.1:1984";
+          rtsp.listen = "127.0.0.1:8554";
+        };
+      };
+
       services.matter-server = {
         enable = true;
 

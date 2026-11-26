@@ -138,6 +138,9 @@ interpolation (`[[NAME]]`) and files rendered on the host by the same
 | TubeSync | Leia stack | stays | n/a | writes `/share/Media/YouTube`, so it belongs with the downloaders |
 | Resilio Sync | QNAP app | stays | n/a | it syncs the storage it sits on |
 | QNAP admin UI | QNAP | stays | n/a | routed as `nas` and `leia` |
+
+### ↯ These have all been removed
+
 | Portainer | Container Station, standalone | stays while Leia runs containers; retire once Komodo has covered both hosts for a while | n/a | none |
 | Homebridge | directory in rolfs.lan, not in the Compose file | **decide**: retire, or a stack on Irulan with host networking for HAP | n/a | `leia/docker/homebridge` |
 | vdirsyncer | env file in rolfs.lan, not in the Compose file | **decide**: retire, or a stack or timer on Irulan | n/a | unknown |
@@ -504,9 +507,9 @@ depends on where it runs as long as `komodo.rolfs.casa` resolves to it.
 
 ## Open questions
 
-- Homebridge and vdirsyncer have files in rolfs.lan but no Compose entry. Are
-  they running anywhere, and do they move or retire?
+- ~Homebridge and vdirsyncer have files in rolfs.lan but no Compose entry. Are
+  they running anywhere, and do they move or retire?~ gone.
 - Phase 3: move the QPKG's library, or keep the fresh server?
 - Should Irulan's periphery pin Core's public key, as Leia's does? It would be
   `services.komodo-periphery.auth.corePublicKeys`, with the key from Core's
-  `/config/keys/core.pub`. Not secret, but not in either repo yet.
+  `/config/keys/core.pub`. Not secret, but not in either repo yet. < You tell me, heh.
