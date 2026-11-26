@@ -23,11 +23,19 @@
 
 let
   cfg = config.fda;
+  user = config.system.primaryUser;
 
   shim = pkgs.rustTool {
     name = "fda-run";
     src = ./pkgs/fda-run.rs;
   };
+
+  shimAgentLabels = lib.pipe config.launchd.user.agents [
+    lib.attrValues
+    (lib.filter (agent:
+      lib.take 1 (lib.toList agent.serviceConfig.ProgramArguments) == [ cfg.runPath ]))
+    (map (agent: agent.serviceConfig.Label))
+  ];
 
   # One `case` arm per registered operation. An allowlist rather than passing
   # the command line through: anything able to exec the shim can reach whatever
@@ -126,8 +134,35 @@ in
     system.activationScripts.postActivation.text = lib.mkAfter # bash
       ''
         mkdir -p /usr/local/bin
-        cp ${shim}/bin/fda-run ${cfg.runPath}
-        chmod +x ${cfg.runPath}
+
+        if ! cmp -s ${shim}/bin/fda-run ${cfg.runPath}; then
+          # Renamed into place rather than written over the old file. The kernel
+          # caches a binary's code signature against its vnode, so new bytes in
+          # the same file can get the next launch killed as invalidly signed.
+          cp ${shim}/bin/fda-run ${cfg.runPath}.new
+          chmod 0555 ${cfg.runPath}.new
+          mv -f ${cfg.runPath}.new ${cfg.runPath}
+
+          # New bytes also strand every loaded agent whose program is the shim.
+          # launchd keeps a code requirement per job, sourced from Background
+          # Task Management, and for an ad-hoc signed binary that is the cdhash.
+          # Once it changes, launchd asks BTM for a fresh one under an item UUID
+          # BTM has since replaced, and every spawn then exits 78 (EX_CONFIG)
+          # before the shim runs, so the dispatcher never gets to report the
+          # lost grant. nix-darwin only reloads an agent whose plist changed, and
+          # these plists don't. Reloading them also lets the RunAtLoad ones probe
+          # straight away, so a lost grant is announced at switch time.
+          uid=$(id -u -- ${user})
+          agents=~${user}/Library/LaunchAgents
+          for label in ${lib.escapeShellArgs shimAgentLabels}; do
+            [ -f "$agents/$label.plist" ] || continue
+            launchctl asuser "$uid" sudo --user=${user} -- \
+              launchctl bootout "gui/$uid/$label" 2>/dev/null || true
+            launchctl asuser "$uid" sudo --user=${user} -- \
+              launchctl bootstrap "gui/$uid" "$agents/$label.plist" \
+              || echo "fda: could not reload $label, log out and back in to recover it" >&2
+          done
+        fi
 
         # The shim this one replaces. Left in place it would be a second binary
         # holding Full Disk Access that nothing calls any more, so the stale
