@@ -12,20 +12,33 @@
 kitty=/opt/homebrew/bin/kitty
 kitten=/opt/homebrew/bin/kitten
 
-# kitty appends its pid to the listen_on path from kitty.conf and never reaps
-# the socket afterwards, so the newest is the live one and even that has to be
-# proved before it is used.
-socket=$(/bin/ls -t "$HOME"/.local/share/kitty/socket-* 2>/dev/null | /usr/bin/head -1)
+# Found by its own process rather than by the newest socket in the directory.
+# The panel and an ordinary kitty both listen on the path kitty.conf sets, so a
+# kitty started from the Dock owns a socket that answers, and addressing the
+# newest one sent every ⌥⇥ to that window instead — which also meant the panel
+# could never be created, because a socket replying looked like proof one was
+# already running.
+panel=$(/usr/bin/pgrep -x kitty-quick-access 2>/dev/null | /usr/bin/head -1)
+[ -n "$panel" ] || exec "$kitten" quick-access-terminal
 
-if [ -z "$socket" ] || ! "$kitty" @ --to "unix:$socket" ls >/dev/null 2>&1; then
-  # Nothing to talk to: the first ⌥⇥ after a login has to start the panel, and
-  # starting it already shows it.
-  exec "$kitten" quick-access-terminal
-fi
+socket="$HOME/.local/share/kitty/socket-$panel"
+
+# The process is up but its socket is not there yet, which is the window
+# between launching and binding. Nothing to send to, and starting a second one
+# would be worse than doing nothing.
+[ -S "$socket" ] || exit 0
 
 case "$1" in
-show | hide)
-  exec "$kitty" @ --to "unix:$socket" resize-os-window --action "$1"
+show)
+  # Two calls because they do different things. `show` only un-hides: against a
+  # window that is merely buried under another application it does nothing at
+  # all, which is what made ⌥⇥ look dead. focus-window is what raises and
+  # activates. Running both covers hidden and buried alike.
+  "$kitty" @ --to "unix:$socket" resize-os-window --action show >/dev/null 2>&1
+  exec "$kitty" @ --to "unix:$socket" focus-window
+  ;;
+hide)
+  exec "$kitty" @ --to "unix:$socket" resize-os-window --action hide
   ;;
 *)
   echo "usage: quick-access <show|hide>" >&2
