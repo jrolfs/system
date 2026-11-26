@@ -1,4 +1,9 @@
 {
+  "status_bar": {
+    "cursor_position_button": true,
+    "show_active_file": false,
+    "line_endings_button": false
+  },
   "ssh_connections": [
     {
       "host": "ala.rolfs.lan",
@@ -154,6 +159,7 @@
   },
   "cli_default_open_behavior": "existing_window",
   "project_panel": {
+    "button": true,
     "entry_spacing": "standard",
     "dock": "left",
     "show_diagnostics": "all",
